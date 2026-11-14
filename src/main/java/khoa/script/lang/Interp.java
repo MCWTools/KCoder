@@ -322,18 +322,21 @@ public final class Interp {
 					sc.define("timed_out", got == null);
 					engine.events.bind(sc, w.def(), got);
 				}
-				case Node.EventDef e -> {
-					List<Object> filters = new ArrayList<>();
-					for (Node a : e.args()) {
-						filters.add(eval(a, sc));
-					}
-					engine.events.register(this, e, filters, sc);
-				}
+				case Node.EventDef e -> registerEvent(e, sc);
 				default -> throw new KcdError("Cannot execute " + n.getClass().getSimpleName(), 0);
 			}
 		} catch (KcdError e) {
 			throw locate(e, n);
 		}
+	}
+
+	/** Registers a handler block and returns it: as a statement it is dropped, in  h = box.On_Hit:  the name keeps it. */
+	private EventBus.Handler registerEvent(Node.EventDef e, Scope sc) {
+		List<Object> filters = new ArrayList<>();
+		for (Node a : e.args()) {
+			filters.add(eval(a, sc));
+		}
+		return engine.events.register(this, e, filters, sc);
 	}
 
 	private void tryStmt(Node.Try t, Scope sc) {
@@ -501,6 +504,9 @@ public final class Interp {
 	Object eval(Node n, Scope sc) {
 		tick(n);
 		switch (n) {
+			case Node.EventDef ed -> {
+				return registerEvent(ed, sc);
+			}
 			case Node.Num x -> {
 				return x.v();
 			}

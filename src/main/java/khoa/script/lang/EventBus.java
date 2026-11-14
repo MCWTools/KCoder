@@ -8,7 +8,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 /** Event handlers registered with {@code on_xxx(...):} blocks, owned by the session that registered them. */
 public final class EventBus {
-	public static final class Handler {
+	public static final class Handler implements Val.KObject {
 		public final String event;
 		public final Session session;
 		public final List<Object> filters;
@@ -22,6 +22,32 @@ public final class EventBus {
 		long expires;
 		ScriptTask running;
 		long nextFire;
+		/** pause(): the handler stays registered but does not fire. */
+		public volatile boolean paused;
+		/** cancel(): the handler is removed for good. */
+		public volatile boolean cancelled;
+		private EventBus bus;
+
+		@Override
+		public String typeName() {
+			return "handler";
+		}
+
+		/** Removes the handler. A run that is already going finishes. */
+		public void cancel() {
+			cancelled = true;
+			if (bus != null) {
+				List<Handler> l = bus.handlers.get(event);
+				if (l != null) {
+					l.remove(this);
+				}
+			}
+		}
+
+		@Override
+		public String toString() {
+			return "<handler " + event + " line " + line + (cancelled ? " cancelled" : paused ? " paused" : "") + ">";
+		}
 
 		Handler(String event, Session session, List<Object> filters, List<Node> body, Scope closure, String file, int line, List<String> argNames) {
 			this.event = event;
@@ -57,7 +83,7 @@ public final class EventBus {
 		this.engine = engine;
 	}
 
-	void register(Interp in, Node.EventDef def, List<Object> filters, Scope closure) {
+	Handler register(Interp in, Node.EventDef def, List<Object> filters, Scope closure) {
 		Registry.EventType type = Registry.get().events.get(def.event());
 		if (type == null) {
 			KcdError e = new KcdError("Unknown event '" + def.event() + "'", in.file, def.line(), def.col());
@@ -94,7 +120,9 @@ public final class EventBus {
 			double sec = filters.isEmpty() || !(filters.get(0) instanceof Double d) ? 1.0 : d;
 			h.nextFire = engine.scheduler.now() + (long) (Math.max(0.001, sec) * 1e9);
 		}
+		h.bus = this;
 		list.add(h);
+		return h;
 	}
 
 	public void unregister(Session s) {
@@ -216,7 +244,7 @@ public final class EventBus {
 			return;
 		}
 		for (Handler h : list) {
-			if (h.session.stopped) {
+			if (h.session.stopped || h.paused) {
 				continue;
 			}
 			if (h.expires != 0 && engine.scheduler.now() > h.expires) {
@@ -259,6 +287,10 @@ public final class EventBus {
 			return;
 		}
 		for (Handler h : list) {
+			if (h.paused) {
+				h.nextFire = Math.max(h.nextFire, now); // no burst of missed runs after resume()
+				continue;
+			}
 			if (h.session.stopped || now < h.nextFire) {
 				continue;
 			}

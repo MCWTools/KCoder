@@ -32,6 +32,29 @@ public final class RuntimeLib {
 		timing();
 		debug();
 		files();
+		handlers();
+	}
+
+	/** Members of the value that  h = box.On_Hit:  (or  h = on_chat():) gives back. */
+	private static void handlers() {
+		R.typeDoc("handler", "An event handler made with  h = box.On_Hit:  or  h = on_chat():  . h.cancel() removes it, h.pause() / h.resume() switch it off and on, h.paused, h.active.");
+		R.method("handler", "cancel()", "Removes the handler for good (a run that is already going finishes).", (in, s, g) -> {
+			((khoa.script.lang.EventBus.Handler) s).cancel();
+			return null;
+		});
+		R.method("handler", "pause()", "The handler stays registered but does not fire until resume().", (in, s, g) -> {
+			((khoa.script.lang.EventBus.Handler) s).paused = true;
+			return null;
+		});
+		R.method("handler", "resume()", "Lets a paused handler fire again.", (in, s, g) -> {
+			((khoa.script.lang.EventBus.Handler) s).paused = false;
+			return null;
+		});
+		R.prop("handler", "paused", "boolean", "True between pause() and resume().", (in, s, g) -> ((khoa.script.lang.EventBus.Handler) s).paused);
+		R.prop("handler", "active", "boolean", "False after cancel() or when the script stopped.", (in, s, g) -> {
+			var h = (khoa.script.lang.EventBus.Handler) s;
+			return !h.cancelled && !h.session.stopped;
+		});
 	}
 
 	private static String join(Args a, int i) {

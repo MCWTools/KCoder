@@ -65,6 +65,22 @@ class LanguageTest {
 	}
 
 	@Test
+	void handlerHandleCancelPauseResume() {
+		Lab l = new Lab().run("""
+			h = on_test(1):
+			    print("chat")
+			print(type(h), h.paused, h.active)
+			h.pause()
+			print(h.paused)
+			h.resume()
+			h.cancel()
+			print(h.active)
+			""");
+		assertEquals(List.of(), l.errors());
+		assertEquals(List.of("handler false true", "true", "false"), l.prints());
+	}
+
+	@Test
 	void nestedLoopsBreakContinue() {
 		Lab l = new Lab().run("""
 			total = 0

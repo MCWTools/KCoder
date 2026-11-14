@@ -605,6 +605,14 @@ public final class Parser {
 					targets.add(value);
 				}
 			}
+			// handle = box.On_Hit:  (an indented block follows): the handler is created and the name holds it (cancel / pause / resume)
+			if (peek().isOp(":") && targets.size() == 1) {
+				Node.EventDef ed = eventDefAfter(value, line, col);
+				if (ed != null) {
+					checkTarget(targets.get(0));
+					return new Node.Assign(targets, ed, false, false, line, col);
+				}
+			}
 			endStatement();
 			for (Node target : targets) {
 				checkTarget(target);
@@ -621,6 +629,33 @@ public final class Parser {
 		}
 		endStatement();
 		return new Node.ExprStmt(first, line, col);
+	}
+
+	/** The event header just parsed as an expression (box.On_Hit  or  on_hit(box)) followed by ":" and a block: the whole handler, or null if it is no event header. */
+	private Node.EventDef eventDefAfter(Node value, int line, int col) {
+		boolean blockNext = peekAt(1).kind() == Token.Kind.NEWLINE || isArgClause();
+		if (!blockNext) {
+			return null;
+		}
+		if (value instanceof Node.Member em && !em.colon()) {
+			String ev = Registry.get().eventByLooseName(em.name());
+			if (ev == null && em.name().toLowerCase().startsWith("on")) {
+				ev = "on_" + em.name().toLowerCase().replaceFirst("^on_?", "").replace("_", "");
+			}
+			if (ev != null) {
+				List<String> argNames = argClause();
+				List<Node> body = block();
+				List<String> names = new ArrayList<>();
+				names.add(null);
+				return new Node.EventDef(ev, List.of(em.obj()), names, argNames, body, line, col);
+			}
+		}
+		if (value instanceof Node.Call c && c.fn() instanceof Node.Name n && (n.name().startsWith("on_") || Registry.get().events.containsKey(n.name()))) {
+			List<String> argNames = argClause();
+			List<Node> body = block();
+			return new Node.EventDef(n.name(), c.args(), c.names(), argNames, body, line, col);
+		}
+		return null;
 	}
 
 	private void checkTarget(Node n) {
