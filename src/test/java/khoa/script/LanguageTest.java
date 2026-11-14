@@ -81,6 +81,25 @@ class LanguageTest {
 	}
 
 	@Test
+	void callAndNameAreSeparate() {
+		// count = count(...): the name is a variable, name(...) is a call
+		Lab l = new Lab().run("""
+			count = count([1, 2, 3])
+			print(count)
+			count = count([1])
+			print(count)
+			function count():
+			    return 5
+			count = count()
+			print(count)
+			count = count()
+			print(count)
+			""");
+		assertEquals(List.of(), l.errors());
+		assertEquals(List.of("3", "1", "5", "5"), l.prints());
+	}
+
+	@Test
 	void nestedLoopsBreakContinue() {
 		Lab l = new Lab().run("""
 			total = 0

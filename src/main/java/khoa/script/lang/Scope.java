@@ -19,6 +19,34 @@ public final class Scope {
 		this.label = label;
 	}
 
+	/** Functions written with "function name(...)": kept apart from variables, so  count = count()  does not lose the function count. */
+	private Map<String, Object> fns;
+
+	public void defineFunction(String name, Object fn) {
+		if (fns == null) {
+			fns = new HashMap<>();
+		}
+		fns.put(name, fn);
+		vars.put(name, fn); // still a value too: g = count passes it around
+	}
+
+	/**
+	 * What  name(...)  calls: the nearest user function of that name, or a variable holding something callable (a lambda).
+	 * A variable that holds a number, text ... is skipped, since a call can never mean it. Null if there is none (then a builtin is used).
+	 */
+	public Object findCallable(String name) {
+		for (Scope s = this; s != null; s = s.parent) {
+			if (s.fns != null && s.fns.containsKey(name)) {
+				return s.fns.get(name);
+			}
+			Object v = s.vars.get(name);
+			if (v instanceof Val.KFunction || v instanceof Builtin || v instanceof Val.Bound) {
+				return v;
+			}
+		}
+		return null;
+	}
+
 	public Scope root() {
 		Scope s = this;
 		while (s.parent != null) {

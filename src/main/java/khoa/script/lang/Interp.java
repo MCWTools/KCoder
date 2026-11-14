@@ -270,9 +270,9 @@ public final class Interp {
 				case Node.FuncDef f -> {
 					if (reg.builtin(f.name()) != null) {
 						engine.console.warn(session, file + ":" + f.line() + ": function '" + f.name()
-							+ "' has the same name as a builtin; calls to " + f.name() + "() use the builtin. Rename it or call it as module:" + f.name() + "().", file, f.line());
+							+ "' has the same name as a builtin; in this script " + f.name() + "() now calls yours, not the builtin.", file, f.line());
 					}
-					sc.define(f.name(), new Val.KFunction(f.name(), f.params(), f.body(), null, sc, file, f.line()));
+					sc.defineFunction(f.name(), new Val.KFunction(f.name(), f.params(), f.body(), null, sc, file, f.line()));
 				}
 				case Node.Try t -> tryStmt(t, sc);
 				case Node.Match m -> {
@@ -739,6 +739,13 @@ public final class Interp {
 		try {
 			Node f = c.fn();
 			if (f instanceof Node.Name nm) {
+				// name(...) is a call: a user function (or lambda) of that name wins over a builtin, and a variable that is not callable is ignored
+				Object user = sc.findCallable(nm.name());
+				if (user != null) {
+					List<Object> pos = new ArrayList<>(c.args().size());
+					Map<String, Object> named = evalArgs(c, sc, pos);
+					return callValue(user, pos, named, nm.name());
+				}
 				Builtin b = reg.builtin(nm.name());
 				if (b != null) {
 					List<Object> pos = new ArrayList<>(c.args().size());
