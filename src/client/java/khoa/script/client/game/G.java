@@ -106,10 +106,7 @@ public final class G {
 
 	/** Distance from a point to the nearest point of a box (0 inside it). */
 	public static double distanceToBox(Vec3 p, AABB b) {
-		double dx = Math.max(Math.max(b.minX - p.x, 0), p.x - b.maxX);
-		double dy = Math.max(Math.max(b.minY - p.y, 0), p.y - b.maxY);
-		double dz = Math.max(Math.max(b.minZ - p.z, 0), p.z - b.maxZ);
-		return Math.sqrt(dx * dx + dy * dy + dz * dz);
+		return khoa.api.world.KhoaGeometry.distanceToBox(p, b);
 	}
 
 	public static List<Object> asList(Iterable<? extends Entity> it) {

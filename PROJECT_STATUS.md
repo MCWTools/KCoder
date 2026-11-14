@@ -6,6 +6,11 @@ Client-side Fabric mod: an in-game scripting platform with its own Python-like l
 - Minecraft 26.3, Fabric Loader 0.19.5, Fabric API 0.163.0+26.3 (template version), Loom 1.18.x, Gradle 9.7.1, JDK 25, no mappings line.
 - Mod id `khoascript`, package `khoa.script`, jar `build/libs/kcoder-1.0.0.jar`.
 
+## 2026-11-14: Switched to KhoaAPILibs (1.1.0)
+- KCoder now REQUIRES the KhoaAPILibs mod (modid `khoaapi` >= 1.0.0, https://github.com/MCWTools/KhoaAPILibs). The jar is compiled against from `libs/KhoaAPILibs-1.0.0.jar` (not bundled); players install `KhoaAPILibs-<version>.jar` next to KCoder.
+- Moved to the library: hitbox scaling + real box (`khoa.api.hitbox.KhoaHitbox`, its own Entity mixin and the attack / interact cancel), nearest-angle-to-aim maths (`khoa.api.aim.KhoaAim`), distance-to-box (`KhoaGeometry`). KCoder's `EntityMixin` and `HitboxScale` were deleted; `MultiPlayerGameModeMixin` only feeds on_craft now. `hitbox_entity`, `on_hit` and `get_nearest_angle_to_aim` keep the same script API.
+- Verified: `gradlew build` (see below). NOT verified in game: the library mixins applying next to KCoder's.
+
 ## Layout
 - `src/main/java/khoa/script/lang` - lexer, parser, interpreter, coroutines, scheduler, events, sessions, debugger, log.
 - `src/main/java/khoa/script/lib` - Core (math/vector/string/list/map) and Runtime (print/wait/timers/files) builtins.

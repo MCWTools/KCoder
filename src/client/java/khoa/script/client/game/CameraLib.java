@@ -64,7 +64,8 @@ public final class CameraLib {
 		if (nearest) {
 			Entity e = target instanceof HitboxRef h ? h.entity : target instanceof EntityRef r ? r.entity() : null;
 			if (e != null) {
-				return HitboxLib.nearestAim(p, HitboxLib.realBox(e));
+				khoa.api.aim.Rotation near = khoa.api.aim.KhoaAim.getNearestAngleToAim(p, HitboxLib.realBox(e));
+				return new Val.Rotation(near.yaw(), near.pitch());
 			}
 		}
 		return Convert.directionToRotation(aimPoint(target).sub(G.v(p.getEyePosition())));

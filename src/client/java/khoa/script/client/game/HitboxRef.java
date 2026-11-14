@@ -1,6 +1,8 @@
 package khoa.script.client.game;
 
 import net.minecraft.world.entity.Entity;
+
+import khoa.api.hitbox.KhoaHitbox;
 import net.minecraft.world.phys.AABB;
 
 import khoa.script.lang.KcdError;
@@ -24,7 +26,7 @@ public final class HitboxRef implements Val.KSettable {
 	}
 
 	public double scale() {
-		return ((HitboxScale) entity).khoa$getScale();
+		return KhoaHitbox.getScale(entity);
 	}
 
 	public boolean active() {
@@ -44,7 +46,7 @@ public final class HitboxRef implements Val.KSettable {
 		if (removed) {
 			throw new KcdError("This hitbox was removed", 0);
 		}
-		((HitboxScale) entity).khoa$setScale(HitboxLib.checkScale(value));
+		KhoaHitbox.scale(entity, HitboxLib.checkScale(value));
 	}
 
 	@Override
