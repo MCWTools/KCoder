@@ -1,0 +1,2827 @@
+KCODER REFERENCE
+================
+KCoder is a client-side Fabric mod for Minecraft 26.3: an in-game scripting platform. You write programs in a Python-like language
+(files end in .kcd), edit them in an in-game IDE (command /kcoder), and they control the client: read the world, entities and
+inventory, press keys, aim the camera, draw in 3D, build GUIs, call events. This file is generated from the mod's live registry,
+so every function, type, event and enum listed here exists.
+
+------------------------------------------------------------------------------
+1. WHAT THE MOD CONTAINS
+------------------------------------------------------------------------------
+- Language: Python-like syntax, coroutines (wait/wait_until never block the game), events, modules (implement), try/except,
+  lambdas, comprehensions, f-style string interpolation, vec2/vec3 maths, Lua-style enums, typed declarations for the editor.
+- In-game IDE (/kcoder): script folders, multi-file projects, syntax highlighting, autocomplete and signature help that know
+  every function and type, type inference, code folding, find/replace, error underlines, undo, copy/cut whole line, a log and
+  console panel, a debugger (breakpoints, step over/into/out, variable view) and a profiler.
+- Game access: entities, blocks, raycasts, inventory, containers, NBT/data components, attributes, boss bars, chat, keys,
+  mouse, camera, screenshots, files and JSON.
+- 3D drawing: block overlays, boxes, lines, graphs (functions, parametric, surfaces), images in the world, optional
+  see-through-walls rendering, colors (rgb/rgba/hsv/hex/lerp).
+- Script GUI: rect, oval, line, label, image, icon, textbox, button, progress, checkbox, slider with parents, anchors,
+  scale+pixel sizes, clipping, scrolling, dragging, tweens/animations, toasts, and a ui_kit module with ready-made windows.
+- Visual GUI editor (/kcoder gui): place Screen Folders, Color Frames, Text, Buttons, Images (PNG, tint, transparency) and
+  Textboxes; explorer tree, properties panel, drag to move, handles to resize, undo/redo, saved outside script folders in
+  kcoder/gui.json. Scripts reach them by name.
+
+------------------------------------------------------------------------------
+2. LANGUAGE SYNTAX
+------------------------------------------------------------------------------
+Comments:        # to end of line
+Numbers:         all numbers are doubles: 3, 2.5, -1
+Strings:         "text" or 'text'; interpolation with braces:  "hp is {get_health()}"
+Booleans/nil:    true false nil   (True/False/TRUE/None also accepted, any case)
+Lists:           xs = [1, 2, 3]   xs[0]   xs[-1]   xs[1:3]   len(xs)   0-based
+Maps:            m = {"a": 1, "b": 2}   m["a"]   m.a   keys can be any value, even entities: m[entity] = line
+                 missing key reads as nil, so  if not m[k]:  works
+Tuples/unpack:   a, b = 1, 2        for i, x in enumerate(xs):
+Vectors:         vec3(1, 2, 3), vec2(1, 2); + - * / and .x .y .z, distance(a, b)
+Resource ids:    minecraft:allay   minecraft:diamond_sword   (no quotes)
+
+Operators:       + - * / // % **   == != < > <= >=   and or not   in   is
+                 x += 1  x -= 1  x *= 2 ...
+
+Control flow:
+    if a:            elif b:            else:
+    while cond:      repeat 5:          for x in xs:      for i in range(1, 10):   (range is inclusive)
+    break  continue  pass  return  exit
+    try:  ... except err:  ... finally: ...        assert cond, "message"
+
+Functions:       def add(a, b=1):  return a + b          (also function / fn)
+                 f = lambda x: x * 2
+                 call a method with  value:method(args)  or  value.method(args)
+
+VARIABLES AND SCOPE
+    x = 5            changes variable x wherever it lives (also inside functions and event handlers);
+                     if x does not exist yet it becomes a GLOBAL
+    local x = 5      a variable of this function/handler only
+    local a, b = 1, 2
+    const MAX = 3    constant; assigning again is an error
+    global total = 5 explicit global (still allowed)
+    for-loop variables, comprehension variables and the except variable are always local.
+
+TYPED DECLARATIONS (hints for the editor's suggestions; not checked at run time)
+    vex: entity = get_nearest_entity(minecraft:vex)
+    items: list<entity> = []
+    lines: map<entity,line3d> = {}
+    lines[allay]: line3d = draw_line_3d(...)       type of one element
+    The editor also infers element types from  lines[k] = value  and  xs.append(value).
+
+EVENTS
+    on_key_press("G"):
+        showing = not showing
+    The block runs every time the event fires; the filter arguments narrow it down. See section 7.
+
+MODULES
+    kit = implement ./features/ui_kit.kcd
+    kit:window("Title")                 functions and variables of the file are members of kit
+
+STRICT ARGUMENTS
+    Every builtin checks its argument types and gives a readable error (with the valid enum choices) when one is wrong.
+
+ENUMS
+    get_entities(sort = enum.entity_sort.health)      enum.<group>. lists every valid choice in the editor.
+
+------------------------------------------------------------------------------
+3. TYPICAL PROGRAMS (patterns)
+------------------------------------------------------------------------------
+Toggle a line to every allay when G is pressed:
+    showing = false
+    lines = {}
+    on_key_press("G"):
+        showing = not showing
+        if not showing:
+            for allay in lines.keys():
+                delete(lines[allay])
+            lines = {}
+    while true:
+        if showing:
+            for allay in get_entities_in_range(minecraft:allay, 100):
+                if not lines[allay]:
+                    lines[allay]: line3d = draw_line_3d(get_eye_pos(), get_entity_position(allay), color.rgb(0,50,255), 1, 0.05, true)
+                else:
+                    lines[allay]:setorigin(get_eye_pos(), get_entity_position(allay))
+        wait(0.05)
+
+Control a GUI made in the visual editor (names are the ones shown in the explorer):
+    ScreenFolder.enabled = true
+    ScreenFolder.MoneyText.text = "000"
+    entered = ScreenFolder.Box.text
+    ScreenFolder.Icon.texture = "localstorage/textures/icon.png"
+    my_label.parent = ScreenFolder         # elements made by script can live inside a Screen Folder too
+
+------------------------------------------------------------------------------
+4. EDITOR SHORTCUTS
+------------------------------------------------------------------------------
+Ctrl+Space suggestions, Tab accept, Ctrl+F / Ctrl+H find/replace, Ctrl+S save, Ctrl+Z / Ctrl+Y undo/redo, Ctrl+C / Ctrl+X on no
+selection copy/cut the current line, Ctrl+Shift+[ / ] / - fold, click the gutter for breakpoints.
+GUI editor: right-click for menus, drag to move, handles to resize, Del delete, Ctrl+D duplicate, Ctrl+Z / Ctrl+Y undo/redo.
+
+
+==============================================================================
+5. BUILT-IN FUNCTIONS (406)
+==============================================================================
+
+--- 3d ---
+
+overlay_block(block:any, shape?:overlay_shape="hitbox", fill?:any, fill_alpha?:number=0.25, outline?:any, outline_alpha?:number=1, thickness?:number=0.03, through_walls?:boolean=false) -> overlay
+    Draws an overlay on a block (or a list of blocks) and finds its position by itself. shape: "box" (1x1x1), "hitbox" (the block's outline shape), "model" (follows the real model) or "collision". fill and outline take color.rgb(...), "#RRGGBB" or a name. *_alpha is 0 (invisible) to 1 (solid). thickness is in blocks (0.1 = a tenth of a block).
+    example:
+        for b in get_blocks_around(6, "minecraft:diamond_ore"):
+            overlay_block(b, "model", color.rgb(0, 200, 255), 0.2, color.rgb(255, 255, 255), 1, 0.02)
+
+box_overlay(pos:vec3, size:any, fill?:any, fill_alpha?:number=0.25, outline?:any, outline_alpha?:number=1, thickness?:number=0.03, through_walls?:boolean=false) -> overlay
+    A box at free decimal coordinates: pos is the lowest corner, size is a vec3 (or one number for a cube). fill and outline take color.rgb(...), "#RRGGBB" or a name. *_alpha is 0 (invisible) to 1 (solid). thickness is in blocks (0.1 = a tenth of a block).
+    example:
+        box = box_overlay(vec3(10.5, 64, 3.25), vec3(2, 1, 0.5), color.rgb(255, 0, 0), 0.3, color.rgb(255, 255, 0), 1, 0.05)
+
+box_outline(pos:vec3, size:any, fill?:any, fill_alpha?:number=0.25, outline?:any, outline_alpha?:number=1, thickness?:number=0.03, through_walls?:boolean=false) -> overlay
+    A box at free decimal coordinates: pos is the lowest corner, size is a vec3 (or one number for a cube). fill and outline take color.rgb(...), "#RRGGBB" or a name. *_alpha is 0 (invisible) to 1 (solid). thickness is in blocks (0.1 = a tenth of a block). (alias of box_overlay)
+    example:
+        box = box_overlay(vec3(10.5, 64, 3.25), vec3(2, 1, 0.5), color.rgb(255, 0, 0), 0.3, color.rgb(255, 255, 0), 1, 0.05)
+
+line_3d(from:vec3, to:vec3, color?:any, alpha?:number=1, thickness?:number=0.05, through_walls?:boolean=false) -> line3d
+    Draws a straight line in the world. Keep it in a variable to move or recolor it later.
+    example:
+        ln = line_3d(get_player_position(), vec3(0, 80, 0), color.rgb(255, 80, 0))
+        ln:set_endpoint(vec3(10, 70, 10))
+        ln:delete()
+
+draw_line_3d(from:vec3, to:vec3, color?:any, alpha?:number=1, thickness?:number=0.05, through_walls?:boolean=false) -> line3d
+    Draws a straight line in the world. Keep it in a variable to move or recolor it later. (alias of line_3d)
+    example:
+        ln = line_3d(get_player_position(), vec3(0, 80, 0), color.rgb(255, 80, 0))
+        ln:set_endpoint(vec3(10, 70, 10))
+        ln:delete()
+
+delete(thing:any)
+    Deletes an overlay, line, graph, image or GUI element.
+
+clear_overlays()
+    Deletes every 3D shape your script made.
+
+plot_points(points:list<vec3>, color?:any, alpha?:number=1, thickness?:number=0.04, closed?:boolean=false, through_walls?:boolean=false) -> graph3d
+    Connects points with a line.
+
+plot_values(origin:vec3, values:list<number>, spacing?:number=1, scale?:number=1, color?:any, alpha?:number=1, thickness?:number=0.04, through_walls?:boolean=false) -> graph3d
+    A line chart: value i is drawn at origin + (i*spacing, value*scale, 0).
+
+plot_function(origin:vec3, fn:function, x_min:number, x_max:number, steps?:number=100, color?:any, alpha?:number=1, thickness?:number=0.04, plane?:plane="xy", through_walls?:boolean=false) -> graph3d
+    Graphs y = fn(x) standing in the world. plane "xy" runs along X, "zy" along Z. Every unit is one block.
+    example:
+        g = plot_function(vec3(0, 70, 0), lambda x: sin(x) * 2, -10, 10, 200, color.rgb(0, 255, 120))
+
+plot_parametric(origin:vec3, fn:function, t_min:number, t_max:number, steps?:number=200, color?:any, alpha?:number=1, thickness?:number=0.04, through_walls?:boolean=false) -> graph3d
+    A 3D curve: fn(t) returns a vec3 offset from origin.
+    example:
+        helix = plot_parametric(get_player_position(), lambda t: vec3(cos(t) * 2, t * 0.3, sin(t) * 2), 0, 25)
+
+plot_surface(origin:vec3, fn:function, x_min:number, x_max:number, z_min:number, z_max:number, steps?:number=24, color?:any, alpha?:number=1, thickness?:number=0.03, through_walls?:boolean=false) -> graph3d
+    A 3D graph y = fn(x, z) drawn as a wire grid.
+    example:
+        surf = plot_surface(vec3(0, 70, 0), lambda x, z: sin(x) * cos(z), -5, 5, -5, 5, 30, color.rgb(255, 160, 0))
+
+image_3d(texture:string, pos:vec3, width?:number=1, height?:number, facing?:any="camera", alpha?:number=1) -> image3d
+    Shows a picture in the world. texture: a .png file in your script folder ("./logo.png") or a game texture id. facing: "camera" (always toward you), "horizontal", "north"/"south"/"east"/"west", or a vec3 direction. Height defaults to the picture's proportions.
+    [runs on the client thread]
+    example:
+        pic = image_3d("./logo.png", get_player_position() + vec3(0, 3, 0), 2)
+
+get_overlay_count() -> number
+    How many 3D shapes exist right now (all scripts).
+
+get_blocks_around(range:number, id?:string) -> list<block>
+    Blocks in a square (cube) around the player, optionally only one block id. Air is skipped. Range is at most 24.
+    [runs on the client thread]
+
+--- action ---
+
+left_click()
+    One attack / left click at what your crosshair points at (the crosshair target is refreshed first).
+    [runs on the client thread; permission: action]
+    example:
+        left_click()
+
+right_click()
+    One use / right click.
+    [runs on the client thread; permission: action]
+
+use_item()
+    One use / right click. (alias of right_click)
+    [runs on the client thread; permission: action]
+
+hold_left(seconds?:number)
+    Holds the attack button (mining). With seconds it waits and lets go; without it holds until release_left().
+    [may pause the script; permission: action]
+
+hold_right(seconds?:number)
+    Holds the use button. With seconds it waits and lets go; without it holds until release_right().
+    [may pause the script; permission: action]
+
+release_left()
+    Lets go of the attack button.
+    [runs on the client thread]
+
+release_right()
+    Lets go of the use button.
+    [runs on the client thread]
+
+release_all()
+    Lets go of every key and button this script holds.
+    [runs on the client thread]
+
+jump()
+    Presses the jump key for one moment.
+    [runs on the client thread; permission: action]
+
+sneak(enabled?:boolean=true)
+    Starts or stops sneaking.
+    [runs on the client thread; permission: action]
+
+sprint(enabled?:boolean=true)
+    Starts or stops sprinting.
+    [runs on the client thread; permission: action]
+
+move(direction:string, seconds?:number)
+    Walks forward, back, left or right. With seconds it waits and stops; without it keeps going until stop_moving().
+    [may pause the script; permission: action]
+    example:
+        move("forward", 1.5)
+
+stop_moving()
+    Stops walking started with move().
+    [runs on the client thread]
+
+drop_item()
+    Drops one item from your selected slot.
+    [runs on the client thread; permission: action]
+
+swap_hands()
+    Swaps the items in your hands.
+    [runs on the client thread; permission: action]
+
+hotbar_select(slot:number)
+    Selects hotbar slot 1-9.
+    [runs on the client thread; permission: action]
+    example:
+        hotbar_select(3)
+
+hotbar_slot(slot:number)
+    Selects hotbar slot 1-9. (alias of hotbar_select)
+    [runs on the client thread; permission: action]
+    example:
+        hotbar_select(3)
+
+attack_entity(entity:entity)
+    Attacks an entity directly (same as clicking on it).
+    [runs on the client thread; permission: action]
+
+interact_entity(entity:entity) -> boolean
+    Right-clicks an entity (feed, trade, ride ...). Returns true if something happened.
+    [runs on the client thread; permission: action]
+
+interact_block(pos:vec3, face?:block_face="up") -> boolean
+    Right-clicks a block face with the item in your hand. Returns true if something happened.
+    [runs on the client thread; permission: action]
+
+close_screen()
+    Closes the open menu (inventory, chest ...).
+    [runs on the client thread; permission: action]
+
+--- camera ---
+
+get_camera() -> map
+    Camera info: position, rotation, direction, detached (third person).
+    [runs on the client thread]
+
+get_camera_position() -> vec3
+    Where the camera is.
+    [runs on the client thread]
+
+get_camera_rotation() -> rotation
+    Yaw and pitch of the camera.
+    [runs on the client thread]
+
+get_camera_direction() -> vec3
+    Unit vector the camera looks along.
+    [runs on the client thread]
+
+get_yaw() -> number
+    Your yaw in degrees (0 = south, -90 = east, 90 = west, 180 = north).
+    [runs on the client thread]
+
+get_pitch() -> number
+    Your pitch in degrees (-90 = up, 90 = down).
+    [runs on the client thread]
+
+get_look_vector() -> vec3
+    Unit vector you look along.
+    [runs on the client thread]
+
+is_looking_at(target:vec3, tolerance?:number=3) -> boolean
+    True if your crosshair is on the target: for an entity or block, the look ray hits its box; for a point, within `tolerance` degrees.
+    [runs on the client thread]
+
+set_player_direction(yaw:number, pitch:number)
+    Turns you to this yaw/pitch (degrees) at once.
+    [runs on the client thread; permission: look]
+    example:
+        set_player_direction(yaw, pitch)
+
+set_camera_rotation(yaw:number, pitch:number)
+    Turns you to this yaw/pitch (degrees) at once. (alias of set_player_direction)
+    [runs on the client thread; permission: look]
+    example:
+        set_player_direction(yaw, pitch)
+
+look_at(target:vec3)
+    Turns you at once to look at a point, entity (its centre) or block (its centre).
+    [runs on the client thread; permission: look]
+    example:
+        look_at(allay)
+
+turn_towards(yaw:number, pitch:number, fraction?:number=1) -> number
+    Turns you the given FRACTION of the remaining way towards yaw/pitch. fraction 1 lands exactly on it. Returns the angle still left (degrees).
+    [runs on the client thread; permission: look]
+
+rotate_towards(target:vec3, max_degrees?:number=5) -> number
+    Turns you towards a target by at most max_degrees (one step). Returns the angle still left; 0 = looking right at it. Call it in a loop with wait().
+    [runs on the client thread; permission: look]
+    example:
+        while rotate_towards(opponent, 8) > 0:
+            wait_tick(1)
+
+look_at_smooth(target:vec3, steps?:number=100, min_ms?:number=1, max_ms?:number=3)
+    Smoothly turns you to the target in `steps` small moves, waiting a random min_ms..max_ms between them. The direction is recalculated every step, so a moving target is followed and your crosshair is exactly on it after the last step.
+    [may pause the script; permission: look]
+    example:
+        look_at_smooth(allay)  # same as the 100-step loop below
+
+--- client ---
+
+get_game_version() -> string
+    Minecraft version, e.g. 26.3.
+
+get_client_brand() -> string
+    Client brand: fabric.
+
+get_screen() -> string
+    Class name of the open menu, or nil when playing.
+    [runs on the client thread]
+
+is_screen_open() -> boolean
+    True if a menu is open.
+    [runs on the client thread]
+
+get_scaled_width() -> number
+    Window width in GUI pixels.
+    [runs on the client thread]
+
+get_scaled_height() -> number
+    Window height in GUI pixels.
+    [runs on the client thread]
+
+get_window_width() -> number
+    Window width in real pixels.
+    [runs on the client thread]
+
+get_window_height() -> number
+    Window height in real pixels.
+    [runs on the client thread]
+
+get_fps() -> number
+    Frames per second.
+    [runs on the client thread]
+
+get_server_address() -> string
+    Address of the server, "singleplayer" or nil when not connected.
+    [runs on the client thread]
+
+get_connection_status() -> string
+    singleplayer, multiplayer or disconnected.
+    [runs on the client thread]
+
+get_mouse_sensitivity() -> number
+    Mouse sensitivity setting (0-1).
+    [runs on the client thread]
+
+--- convert ---
+
+to_number(x:any, base?:number=10) -> number
+    Text to number, or nil when it is not a number (never an error). With a base: to_number("ff", 16) = 255.
+    example:
+        n = to_number(input_text)
+        if n == nil:
+            print("not a number")
+
+tonumber(x:any, base?:number=10) -> number
+    Text to number, or nil when it is not a number (never an error). With a base: to_number("ff", 16) = 255. (alias of to_number)
+    example:
+        n = to_number(input_text)
+        if n == nil:
+            print("not a number")
+
+is_number(x:any) -> boolean
+    True if x is a number or text that reads as one.
+
+to_string(x:any, base?:number=10) -> string
+    Anything to text. With a base, a whole number is written in it: to_string(255, 16) = "ff".
+
+tostring(x:any, base?:number=10) -> string
+    Anything to text. With a base, a whole number is written in it: to_string(255, 16) = "ff". (alias of to_string)
+
+to_base(n:number, base:number, width?:number=0) -> string
+    Writes a whole number in base 2 to 36, padded with zeros to a width.
+
+from_base(text:string, base:number) -> number
+    Reads text written in base 2 to 36; nil if it is not valid.
+
+to_binary(n:number, width?:number=0) -> string
+    Whole number in binary: to_binary(10) = "1010", to_binary(5, 8) = "00000101".
+
+to_hex(n:number, width?:number=0) -> string
+    Whole number in hexadecimal (lowercase): to_hex(255) = "ff".
+
+to_octal(n:number, width?:number=0) -> string
+    Whole number in base 8.
+
+from_binary(text:string) -> number
+    Reads binary text ("1010" or "0b1010"); nil if invalid.
+
+from_hex(text:string) -> number
+    Reads hexadecimal text ("ff", "0xff" or "#ff"); nil if invalid.
+
+from_octal(text:string) -> number
+    Reads base 8 text; nil if invalid.
+
+ord(char:string) -> number
+    Character code of the first character: ord("A") = 65.
+
+chr(code:number) -> string
+    Character with that code: chr(65) = "A".
+
+to_float(x:any) -> number
+    Like to_number but raises a readable error when the text is not a number.
+
+--- data ---
+
+json_parse(text:string) -> any
+    Turns JSON text into maps, lists, numbers, strings, booleans and nil.
+
+json_stringify(value:any, pretty?:boolean) -> string
+    Turns a value into JSON text. Vectors become lists; unknown things become strings.
+
+list_attributes() -> list<string>
+    Every attribute id: minecraft:max_health, minecraft:attack_damage, minecraft:movement_speed ...
+
+get_entity_attribute(entity:entity, attribute:attribute) -> number
+    Current value of an attribute (with all modifiers), e.g. get_entity_attribute(e, minecraft:max_health). Gives nil if the entity is nil, is not a living entity, or does not have that attribute.
+    [runs on the client thread]
+    example:
+        speed = get_entity_attribute(vex, minecraft:movement_speed)
+
+get_entity_attribute_base(entity:entity, attribute:attribute) -> number
+    Base value of an attribute, without modifiers.
+    [runs on the client thread]
+
+get_entity_attributes(entity:entity) -> map
+    Every attribute the entity has: a map from attribute id to its current value.
+    [runs on the client thread]
+
+get_entity_nbt(entity:entity, path?:string) -> any
+    The entity's NBT data as a map (or one value, with a dotted path like "Brain.memories" or "DuplicationCooldown"). In singleplayer this is the real server data (an Allay's DuplicationCooldown, ages, owners ...). On a multiplayer server the client only has what the server sent, so many values are missing.
+    [runs on the client thread]
+    example:
+        cd = get_entity_nbt(allay, "DuplicationCooldown")
+
+get_item_nbt(item:item, path?:string) -> any
+    The item's data as a map: id, count and components (enchantments, custom_name, damage, attribute_modifiers ...). Use a dotted path to read one value, e.g. "components.minecraft:damage".
+    [runs on the client thread]
+
+get_block_entity_nbt(pos:vec3, path?:string) -> any
+    NBT of a chest, furnace, sign, spawner ... as a map (nil if the block has none). Full data in singleplayer; on a server only what the client knows.
+    [runs on the client thread]
+
+get_item_attributes(item:item) -> list
+    The attribute modifiers an item gives: a list of maps with attribute, amount, operation (add_value, add_multiplied_base, add_multiplied_total) and slot.
+    [runs on the client thread]
+
+get_item_attribute(item:item, attribute:attribute) -> number
+    Sum of what the item adds to one attribute (0 if none), e.g. get_item_attribute(get_held_item(), minecraft:attack_damage).
+    [runs on the client thread]
+
+--- debug ---
+
+breakpoint()
+    Pauses the script here so the IDE can inspect variables and step.
+    [may pause the script]
+
+profile_start()
+    Starts counting calls and time of functions and builtins.
+
+profile_stop()
+    Stops profiling and prints the report to the log.
+
+run_script(path:string) -> boolean
+    Starts another .kcd file of this script folder as its own script.
+
+--- entity ---
+
+get_entities(type?:string, alive?:boolean=true, sort?:entity_sort="distance", max_distance?:number, max_count?:number, players?:boolean=true, self?:boolean=false) -> list<entity>
+    Entities around you. type is an id like minecraft:allay (or a list of ids, or nil for all). max_distance is measured from your eyes to the entity's box. sort: use enum.entity_sort (distance, distance_desc, angle, health, name, none).
+    [runs on the client thread]
+    example:
+        allays = get_entities(type = minecraft:allay, max_distance = 20, sort = "distance")
+
+get_entities_in_range(type:string, range:number) -> list<entity>
+    Entities of a type whose box is within `range` blocks of your EYES (like interaction reach), nearest first. get_entity_in_range is the same.
+    [runs on the client thread]
+    example:
+        allays = get_entities_in_range(minecraft:allay, 3.5)
+
+get_entity_in_range(type:string, range:number) -> list<entity>
+    Entities of a type whose box is within `range` blocks of your EYES (like interaction reach), nearest first. get_entity_in_range is the same. (alias of get_entities_in_range)
+    [runs on the client thread]
+    example:
+        allays = get_entities_in_range(minecraft:allay, 3.5)
+
+get_nearest_entity(type?:string, max_distance?:number) -> entity
+    The nearest entity (of a type), or nil. Distance is measured from your eyes.
+    [runs on the client thread]
+    example:
+        allay = get_nearest_entity(minecraft:allay)
+
+get_nearest_entities(type?:string, count?:number=5) -> list<entity>
+    The nearest few entities, nearest first.
+    [runs on the client thread]
+
+get_nearest_player(max_distance?:number) -> player
+    The nearest OTHER player inside your render distance, or nil.
+    [runs on the client thread]
+    example:
+        opponent = get_nearest_player()
+
+get_players(max_distance?:number) -> list<player>
+    All other players inside your render distance, nearest first.
+    [runs on the client thread]
+
+get_entity_by_id(id:number) -> entity
+    Entity with this numeric id, or nil.
+    [runs on the client thread]
+
+get_entity_by_uuid(uuid:string) -> entity
+    Entity with this UUID, or nil.
+    [runs on the client thread]
+
+get_entities_in_box(min:vec3, max:vec3, type?:string) -> list<entity>
+    Entities whose box touches the box between two corners.
+    [runs on the client thread]
+
+is_entity(x:any) -> boolean
+    True if x is an entity or player handle.
+
+get_entity_position(entity:entity) -> vec3
+    Position of the entity's feet. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+get_entity_velocity(entity:entity) -> vec3
+    Movement per tick. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+get_entity_rotation(entity:entity) -> rotation
+    Yaw and pitch (degrees). Gives nil if the entity is nil.
+    [runs on the client thread]
+
+get_entity_type(entity:entity) -> string
+    Entity type id, e.g. minecraft:allay. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+get_entity_name(entity:entity) -> string
+    Display name. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+get_entity_health(entity:entity) -> number
+    Health (nil for non-living entities). Gives nil if the entity is nil.
+    [runs on the client thread]
+
+get_entity_max_health(entity:entity) -> number
+    Max health (nil for non-living entities). Gives nil if the entity is nil.
+    [runs on the client thread]
+
+get_entity_distance(entity:entity) -> number
+    Distance from your eyes to the entity's box. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+get_entity_eye_pos(entity:entity) -> vec3
+    Position of the entity's eyes. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+get_entity_eye_height(entity:entity) -> number
+    Eye height above the feet. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+get_entity_width(entity:entity) -> number
+    Box width. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+get_entity_height(entity:entity) -> number
+    Box height. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+get_entity_bounding_box(entity:entity) -> map
+    Map with min and max corners (vec3). Gives nil if the entity is nil.
+    [runs on the client thread]
+
+get_entity_age(entity:entity) -> number
+    Ticks the entity has existed on the client. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+get_entity_uuid(entity:entity) -> string
+    UUID. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+get_entity_id(entity:entity) -> number
+    Numeric id. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+get_entity_target(entity:entity) -> entity
+    The mob's attack target. Usually nil: servers do not send it to clients. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+is_entity_alive(entity:entity) -> boolean
+    True if the entity is alive. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+is_entity_on_ground(entity:entity) -> boolean
+    True if standing on the ground. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+is_entity_in_water(entity:entity) -> boolean
+    True if in water. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+is_entity_invisible(entity:entity) -> boolean
+    True if invisible. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+is_entity_glowing(entity:entity) -> boolean
+    True if glowing. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+is_entity_sneaking(entity:entity) -> boolean
+    True if sneaking. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+is_entity_sprinting(entity:entity) -> boolean
+    True if sprinting. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+can_see_entity(entity:entity) -> boolean
+    True if you have a clear line of sight to the entity. Gives nil if the entity is nil.
+    [runs on the client thread]
+
+--- file ---
+
+read_file(path:string) -> string
+    Reads a text file inside this script folder.
+    [permission: file]
+
+write_file(path:string, content:string)
+    Writes (replaces) a text file inside this script folder.
+    [permission: file]
+
+append_file(path:string, content:string)
+    Appends text to a file inside this script folder.
+    [permission: file]
+
+file_exists(path:string) -> boolean
+    True if the file or folder exists.
+    [permission: file]
+
+create_folder(path:string)
+    Creates a folder (and parents).
+    [permission: file]
+
+list_files(path?:string) -> list
+    Names in a folder (folders end with /).
+    [permission: file]
+
+delete_file(path:string) -> boolean
+    Deletes a file or an empty folder.
+    [permission: file]
+
+rename_file(old:string, new:string)
+    Renames or moves a file inside this script folder.
+    [permission: file]
+
+--- gui ---
+
+from_scale(scale:number, offset?:number) -> dim
+    A position or size relative to the screen (or the parent): from_scale(0.5) is half, from_scale(1, -10) is the full width minus 10 pixels. A plain number means pixels.
+    [runs on the client thread]
+
+create_rect(x:dim, y:dim, w:dim, h:dim, color?:color) -> rect
+    A filled rectangle. Properties: color, border_color, border_width, radius, gradient_color ...
+    [runs on the client thread]
+    example:
+        panel = create_rect(from_scale(0.5), from_scale(0.5), 200, 100, "#202530")
+        panel.anchor_x = 0.5
+        panel.anchor_y = 0.5
+        panel.radius = 6
+
+create_oval(x:dim, y:dim, w:dim, h:dim, color?:color) -> oval
+    A filled ellipse or circle.
+    [runs on the client thread]
+
+create_line(x1:dim, y1:dim, x2:dim, y2:dim, color?:color, thickness?:number) -> line
+    A straight line.
+    [runs on the client thread]
+
+create_text(x:dim, y:dim, text:string, color?:color, scale?:number) -> label
+    A piece of text.
+    [runs on the client thread]
+    example:
+        hp = create_text(10, 10, "HP", "red", 2)
+
+create_image(x:dim, y:dim, w:dim, h:dim, texture:string) -> image
+    A texture, e.g. "minecraft:textures/item/diamond.png" or load_texture("./logo.png").
+    [runs on the client thread]
+
+create_item(x:dim, y:dim, item:any, size?:number) -> icon
+    The icon of an item: an id like "minecraft:diamond" or an item value.
+    [runs on the client thread]
+
+create_textbox(x:dim, y:dim, w:dim, h:dim, placeholder?:string, multiline?:boolean) -> textbox
+    A text input. Read box.text; react with on_submit(box), on_change(box), on_unfocus(box). Needs ui_cursor(true) to type.
+    [runs on the client thread]
+    example:
+        box = create_textbox(from_scale(0.5), from_scale(0.5), from_scale(0.4), 18, "type here")
+        box.anchor_x = 0.5
+        ui_cursor(true)
+        on_submit(box):
+            print(text)
+
+create_button(x:dim, y:dim, w:dim, h:dim, text:string) -> button
+    A button. React with on_click(button).
+    [runs on the client thread]
+
+create_checkbox(x:dim, y:dim, text:string, checked?:boolean) -> checkbox
+    A tick box. Read box.checked; react with on_change(box).
+    [runs on the client thread]
+
+create_slider(x:dim, y:dim, w:dim, h:dim, min?:number, max?:number, value?:number) -> slider
+    A slider. Read slider.value; react with on_change(slider).
+    [runs on the client thread]
+
+create_progress_bar(x:dim, y:dim, w:dim, h:dim, value?:number) -> progress
+    A bar filled from 0 to 1 (progress.value).
+    [runs on the client thread]
+
+ui_cursor(open?:boolean=true)
+    Opens (or closes) a transparent screen with a mouse, so you can click and type in your GUI. Esc closes it.
+    [runs on the client thread]
+
+is_ui_cursor_open() -> boolean
+    True while the GUI mouse is active.
+    [runs on the client thread]
+
+clear_ui()
+    Removes every GUI element this script made (this also happens when the script stops).
+    [runs on the client thread]
+
+get_ui_elements() -> list<gui>
+    Every GUI element this script made.
+    [runs on the client thread]
+
+get_ui_hovered() -> gui
+    The element under the mouse (while the GUI mouse is active), or nil.
+    [runs on the client thread]
+
+animate(element:gui, prop:string, to:any, seconds:number, easing?:easing)
+    Moves a property of an element to a value over time: animate(box, "x", from_scale(0.8), 0.5, "ease_out"). Works on numbers, sizes and colors.
+    [runs on the client thread]
+
+show_toast(text:string, seconds?:number=3, color?:color)
+    A small notification at the top right that fades away.
+    [runs on the client thread]
+
+load_texture(path:string) -> string
+    Loads a .png from your script folder and returns a texture id for create_image() and image_3d().
+    [runs on the client thread]
+
+--- info ---
+
+get_entity_vehicle(entity:entity) -> entity
+    What the entity is riding, or nil.
+    [runs on the client thread]
+
+get_entity_passengers(entity:entity) -> list<entity>
+    Everything riding the entity.
+    [runs on the client thread]
+
+get_bossbars() -> list<map>
+    Boss bars on screen. Each map: id, name, progress (0-1), color, style, darkens_sky.
+    [runs on the client thread]
+
+screenshot(name?:string) -> string
+    Takes a screenshot of the game (without GUI popups of this mod) into the screenshots folder and returns the file name. The file appears a moment later.
+    [runs on the client thread; permission: file]
+
+get_effects() -> list<map>
+    Potion effects on you: id, amplifier (0 = level I), seconds left.
+    [runs on the client thread]
+
+get_container_items() -> list<item>
+    Every slot of the menu you have open (chest, furnace, inventory ...), in slot order.
+    [runs on the client thread]
+
+get_container() -> map
+    Describes the menu you have open: title, type (such as minecraft:generic_9x3, nil for your own inventory), size (slots of the container itself), items (only the container's slots, in order), player_items (your inventory part), empty (no container slot holds an item). nil when no menu is open.
+    [runs on the client thread]
+    example:
+        c = get_container()
+        if c != nil:
+            print(c.title, c.size)
+            for it in c.items:
+                if it.count > 0:
+                    print(it.id, it.count)
+
+get_container_title() -> string
+    Title of the open menu (such as Chest or Large Chest), or nil.
+    [runs on the client thread]
+
+get_clipboard() -> string
+    Text in the system clipboard.
+    [runs on the client thread]
+
+set_clipboard(text:string)
+    Copies text to the system clipboard.
+    [runs on the client thread]
+
+get_text_width(text:string) -> number
+    Width of a text in GUI pixels.
+    [runs on the client thread]
+
+get_text_height() -> number
+    Height of one line of text in GUI pixels.
+    [runs on the client thread]
+
+save_data(key:string, value:any)
+    Remembers a value on disk (kcd/saved_data.json), also after the game restarts. Numbers, strings, booleans, lists and maps work.
+    example:
+        save_data("kills", 12)
+        print(load_data("kills", 0))
+
+load_data(key:string, default?:any) -> any
+    A value stored with save_data, or the default (nil) if there is none.
+
+delete_data(key:string)
+    Forgets a saved value.
+
+list_data_keys() -> list<string>
+    Every key stored with save_data.
+
+get_sign_text(pos:vec3, back?:boolean) -> list<string>
+    The four lines of a sign (front, or back with back=true); nil if there is no sign.
+    [runs on the client thread]
+
+get_scoreboard_title() -> string
+    Title of the sidebar scoreboard, or nil.
+    [runs on the client thread]
+
+get_scoreboard_lines() -> list<map>
+    The sidebar scoreboard: a list of maps with name and score, highest score first.
+    [runs on the client thread]
+
+--- input ---
+
+is_key_pressed(key:string) -> boolean
+    True while a keyboard key is held. Names: "G", "F6", "SPACE", "LSHIFT", "UP" ...
+    [runs on the client thread]
+    example:
+        if is_key_pressed("LSHIFT"):
+
+is_mouse_pressed(button:string) -> boolean
+    True while a mouse button is held: MOUSE_LEFT, MOUSE_RIGHT, MOUSE_MIDDLE.
+    [runs on the client thread]
+
+get_mouse_position() -> vec2
+    Mouse position in GUI-scaled pixels (matters while a menu is open).
+    [runs on the client thread]
+
+get_mouse_delta() -> vec2
+    How far the mouse moved since the previous frame (pixels).
+    [runs on the client thread]
+
+get_scroll_delta() -> number
+    Mouse wheel movement during the last frame (positive = scrolled up, 0 = none).
+    [runs on the client thread]
+
+get_pressed_keys() -> list<string>
+    Names of all keyboard keys held right now.
+    [runs on the client thread]
+
+get_pressed_buttons() -> list<string>
+    Names of the mouse buttons held right now.
+    [runs on the client thread]
+
+list_keys() -> list<string>
+    Every key name scripts can use.
+
+--- inventory ---
+
+get_inventory() -> list<item>
+    Every non-empty slot of your inventory as items (hotbar, inventory, armor, offhand).
+    [runs on the client thread]
+
+get_player_inventory() -> list<item>
+    Every non-empty slot of your inventory as items (hotbar, inventory, armor, offhand). (alias of get_inventory)
+    [runs on the client thread]
+
+get_inventory_size() -> number
+    Number of slots in your inventory (41).
+    [runs on the client thread]
+
+get_inventory_item(slot:number) -> item
+    The item in a slot (0-8 hotbar, 9-35 inventory, 36-39 armor, 40 offhand). Empty slots give an item with .empty == true.
+    [runs on the client thread]
+
+get_hotbar_item(slot:number) -> item
+    The item in hotbar slot 1-9.
+    [runs on the client thread]
+
+get_held_item() -> item
+    The item in your main hand.
+    [runs on the client thread]
+
+get_offhand_item() -> item
+    The item in your offhand.
+    [runs on the client thread]
+
+get_armor(slot:string) -> item
+    Armor piece you wear: head, chest, legs or feet.
+    [runs on the client thread]
+
+find_item(id:string) -> number
+    First inventory slot (0-40) that holds this item id, or -1.
+    [runs on the client thread]
+    example:
+        slot = find_item(minecraft:golden_apple)
+
+find_items(id:string) -> list<item>
+    All inventory slots that hold this item id.
+    [runs on the client thread]
+
+count_item(id:string) -> number
+    How many of this item you carry.
+    [runs on the client thread]
+
+has_item(id:string) -> boolean
+    True if you carry this item.
+    [runs on the client thread]
+
+is_inventory_full() -> boolean
+    True if there is no free slot.
+    [runs on the client thread]
+
+find_hotbar_item(id:string) -> number
+    Hotbar slot 1-9 that holds this item id, or 0.
+    [runs on the client thread]
+
+--- item ---
+
+get_item_id(item:item) -> string
+    Item id, e.g. minecraft:diamond_sword.
+    [runs on the client thread]
+
+get_item_name(item:item) -> string
+    Display name.
+    [runs on the client thread]
+
+get_item_count(item:item) -> number
+    Stack size.
+    [runs on the client thread]
+
+get_item_durability(item:item) -> number
+    Durability left (nil if the item cannot break).
+    [runs on the client thread]
+
+get_item_max_durability(item:item) -> number
+    Max durability (nil if the item cannot break).
+    [runs on the client thread]
+
+get_item_enchantments(item:item) -> map
+    Map of enchantment id to level.
+    [runs on the client thread]
+
+is_item_enchanted(item:item) -> boolean
+    True if the item has enchantments.
+    [runs on the client thread]
+
+is_item_empty(item:item) -> boolean
+    True for an empty slot.
+    [runs on the client thread]
+
+--- list ---
+
+range(start:number, end?:number, step?:number=1) -> range
+    Numbers from start to end, BOTH included. range(5) is 1..5, range(1, 100) is 100 numbers.
+    example:
+        for n in range(1, 100):  # runs 100 times
+
+append(items:list, value:any) -> list
+    Adds a value at the end of the list (changes the list).
+
+insert(items:list, index:number, value:any) -> list
+    Inserts a value at a position.
+
+remove(items:list, value:any) -> boolean
+    Removes the first element equal to value. Returns true if one was removed.
+
+pop(items:list, index?:number=-1) -> any
+    Removes and returns an element (the last one by default).
+
+clear(items:any)
+    Empties a list or map.
+
+sort(items:list, key?:function, reverse?:boolean=false) -> list
+    Sorts the list in place. key is a function that gives the value to sort by.
+    example:
+        sort(allays, lambda e: e.distance)
+
+sorted(items:list, key?:function, reverse?:boolean=false) -> list
+    A sorted copy of the list.
+
+reverse(items:list) -> list
+    Reverses the list in place.
+
+index_of(items:list, value:any) -> number
+    Position of the first equal element, or -1.
+
+enumerate(items:list, start?:number=0) -> list
+    List of (index, value) pairs: for i, v in enumerate(list).
+
+zip(a:list, b:list) -> list
+    Pairs elements of two lists.
+
+filter(items:list, test:function) -> list
+    Elements for which test(element) is true.
+    example:
+        near = filter(entities, lambda e: e.distance < 10)
+
+map(items:list, fn:function) -> list
+    Applies fn to every element.
+
+reduce(items:list, fn:function, initial?:any) -> any
+    Folds the list: fn(accumulator, element).
+
+any(items:list) -> boolean
+    True if any element is truthy.
+
+all(items:list) -> boolean
+    True if every element is truthy.
+
+first(items:list) -> any
+    First element or nil.
+
+last(items:list) -> any
+    Last element or nil.
+
+copy(x:any) -> any
+    Deep copy of a list or map.
+
+--- map ---
+
+keys(m:map) -> list
+    The keys of a map.
+
+values(m:map) -> list
+    The values of a map.
+
+items(m:map) -> list
+    List of (key, value) pairs: for k, v in items(m).
+
+map_get(m:map, key:any, default?:any) -> any
+    Value for a key, or the default when missing.
+
+map_remove(m:map, key:any) -> any
+    Removes a key and returns its value.
+
+--- math ---
+
+abs(x:number) -> number
+    Absolute value.
+    example:
+        abs(-3)  # 3
+
+min(...values:any) -> any
+    Smallest of the values (or of one list).
+    example:
+        min(3, 1, 2)  # 1
+
+max(...values:any) -> any
+    Largest of the values (or of one list).
+    example:
+        max([3, 1, 2])  # 3
+
+floor(x:number) -> number
+    Round down.
+
+ceil(x:number) -> number
+    Round up.
+
+round(x:number, digits?:number=0) -> number
+    Round to the nearest value, optionally to some decimals.
+    example:
+        round(3.14159, 2)  # 3.14
+
+sqrt(x:number) -> number
+    Square root.
+
+pow(x:number, y:number) -> number
+    x to the power y (also x ** y).
+
+sign(x:number) -> number
+    -1, 0 or 1.
+
+sin(x:number) -> number
+    Sine. x is in RADIANS (use sin_deg for degrees).
+
+cos(x:number) -> number
+    Cosine. x is in RADIANS (use cos_deg for degrees).
+
+tan(x:number) -> number
+    Tangent. x is in RADIANS.
+
+asin(x:number) -> number
+    Arc sine, result in RADIANS.
+
+acos(x:number) -> number
+    Arc cosine, result in RADIANS.
+
+atan(x:number) -> number
+    Arc tangent, result in RADIANS.
+
+atan2(y:number, x:number) -> number
+    Angle of the point (x, y) in RADIANS.
+
+sin_deg(x:number) -> number
+    Sine of an angle in degrees.
+
+cos_deg(x:number) -> number
+    Cosine of an angle in degrees.
+
+tan_deg(x:number) -> number
+    Tangent of an angle in degrees.
+
+atan2_deg(y:number, x:number) -> number
+    Angle of the point (x, y) in degrees.
+
+radians(deg:number) -> number
+    Degrees to radians.
+
+degrees(rad:number) -> number
+    Radians to degrees.
+
+log10(x:number) -> number
+    Base 10 logarithm.
+
+exp(x:number) -> number
+    e to the power x.
+
+hypot(x:number, y:number) -> number
+    sqrt(x*x + y*y).
+
+random(a?:number, b?:number) -> number
+    Random decimal. random() is 0..1, random(5) is 0..5, random(1, 3) is 1..3.
+    example:
+        wait(random(1, 3) / 1000)  # 1 to 3 milliseconds
+
+random_int(a:number, b:number) -> number
+    Random whole number from a to b (both included).
+
+random_choice(items:list) -> any
+    A random element of a list.
+
+random_seed(seed:number)
+    Makes random() repeatable.
+
+lerp(a:any, b:any, t:number) -> any
+    Linear interpolation between two numbers or two vectors.
+    example:
+        lerp(0, 10, 0.5)  # 5
+
+clamp(x:number, lo:number, hi:number) -> number
+    Limit x to the range lo..hi.
+
+map_range(value:number, in_min:number, in_max:number, out_min:number, out_max:number) -> number
+    Convert a value from one range to another.
+
+sum(items:list) -> number
+    Sum of a list of numbers (or vectors).
+
+rgb(r:number, g:number, b:number, a?:number=255) -> color
+    A color from 0-255 channels.
+
+hsv(h:number, s:number, v:number, a?:number=255) -> color
+    A color from hue 0-360, saturation 0-1, value 0-1.
+
+lerp_color(a:color, b:color, t:number) -> color
+    Blend two colors ("#RRGGBB", names or numbers).
+
+--- output ---
+
+log(...values:any)
+    Writes an info line to the IDE log.
+
+print(...values:any)
+    Writes the values (separated by spaces) to the IDE log.
+    example:
+        print("yaw:", yaw, "pitch:", pitch)
+
+warn(...values:any)
+    Writes a warning to the IDE log.
+
+error(...values:any)
+    Writes an error line to the IDE log (does not stop the script; use raise() for that).
+
+raise(message:any)
+    Throws an error that stops the script unless a try/catch handles it.
+
+clear_console()
+    Clears the IDE log.
+
+chat(...message:any)
+    Shows a message in YOUR chat window only (nobody else sees it).
+    [runs on the client thread]
+
+actionbar(message:any)
+    Shows text above your hotbar.
+    [runs on the client thread]
+
+title(title:any, subtitle?:any)
+    Shows a big title on screen.
+    [runs on the client thread]
+
+notify(title:any, message?:any)
+    Shows a toast popup in the corner.
+    [runs on the client thread]
+
+sound(id:string, volume?:number=1, pitch?:number=1)
+    Plays a sound, e.g. sound(minecraft:entity.experience_orb.pickup).
+    [runs on the client thread]
+
+send_chat(message:string)
+    Sends a chat message to the server (everyone sees it).
+    [runs on the client thread; permission: chat]
+
+send_command(command:string)
+    Runs a command as you, without the leading slash: send_command("time set day").
+    [runs on the client thread; permission: chat]
+
+--- player ---
+
+get_player_position(player?:player) -> vec3
+    Position of the feet. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+get_player_pos(player?:player) -> vec3
+    Position of the feet. Without an argument: you. With a player (or player name): that player, if inside your render distance. (alias of get_player_position)
+    [runs on the client thread]
+
+get_player_eye_pos(player?:player) -> vec3
+    Position of the eyes. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+get_eye_pos(player?:player) -> vec3
+    Position of the eyes. Without an argument: you. With a player (or player name): that player, if inside your render distance. (alias of get_player_eye_pos)
+    [runs on the client thread]
+
+get_player_eye_height(player?:player) -> number
+    Eye height above the feet. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+get_player_velocity(player?:player) -> vec3
+    Movement per tick. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+get_player_rotation(player?:player) -> rotation
+    Yaw and pitch (degrees). Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+get_player_direction(player?:player) -> vec3
+    Unit vector the player looks along. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+get_player_health(player?:player) -> number
+    Health. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+get_player_max_health(player?:player) -> number
+    Max health. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+get_player_absorption(player?:player) -> number
+    Absorption hearts (golden). Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+get_player_armor(player?:player) -> number
+    Armor points. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+get_player_name(player?:player) -> string
+    Player name. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+get_player_uuid(player?:player) -> string
+    Player UUID. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+get_player_bounding_box(player?:player) -> map
+    Map with min and max corners (vec3). Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+get_player_fall_distance(player?:player) -> number
+    Blocks fallen so far. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+get_player_ping(player?:player) -> number
+    Latency in ms (from the tab list). Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+get_player_gamemode(player?:player) -> string
+    survival, creative, adventure or spectator. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+is_on_ground(player?:player) -> boolean
+    True if standing on the ground. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+is_in_water(player?:player) -> boolean
+    True if in water. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+is_in_lava(player?:player) -> boolean
+    True if in lava. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+is_sprinting(player?:player) -> boolean
+    True if sprinting. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+is_sneaking(player?:player) -> boolean
+    True if sneaking. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+is_swimming(player?:player) -> boolean
+    True if swimming. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+is_flying(player?:player) -> boolean
+    True if flying with creative/abilities flight. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+is_fall_flying(player?:player) -> boolean
+    True if gliding with an elytra. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+is_alive(player?:player) -> boolean
+    True if alive. Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+get_player_effects(player?:player) -> list
+    Active effects as maps with id, amplifier and duration (ticks). Without an argument: you. With a player (or player name): that player, if inside your render distance.
+    [runs on the client thread]
+
+get_player() -> player
+    You (the local player).
+    [runs on the client thread]
+
+get_player_by_name(name:string) -> player
+    A player by name if inside your render distance, else nil.
+    [runs on the client thread]
+
+get_online_players() -> list<string>
+    Names of everyone on the tab list.
+    [runs on the client thread]
+
+get_player_hunger() -> number
+    Your food level (0-20).
+    [runs on the client thread]
+
+get_player_food_level() -> number
+    Your food level (0-20). (alias of get_player_hunger)
+    [runs on the client thread]
+
+get_player_saturation() -> number
+    Your saturation.
+    [runs on the client thread]
+
+get_player_level() -> number
+    Your experience level.
+    [runs on the client thread]
+
+get_player_xp() -> number
+    Your total experience points.
+    [runs on the client thread]
+
+get_player_selected_slot() -> number
+    Selected hotbar slot, 1-9.
+    [runs on the client thread]
+
+get_player_status() -> map
+    Summary of you: health, food, level, position, rotation, gamemode, flags.
+    [runs on the client thread]
+
+is_in_world() -> boolean
+    True if you are in a world.
+    [runs on the client thread]
+
+--- string ---
+
+len(x:any) -> number
+    Length of a string, list, map, tuple or range.
+
+str(x:any) -> string
+    Converts any value to text.
+
+format(template:string, ...values:any) -> string
+    Replaces each {} (or {0}, {1}) in the template with a value.
+    example:
+        format("{} / {}", health, max_health)
+
+split(text:string, sep?:string=" ") -> list<string>
+    Splits a string.
+
+join(items:list, sep?:string="") -> string
+    Joins list elements into one string.
+
+replace(text:string, old:string, new:string) -> string
+    Replaces every occurrence.
+
+contains(container:any, item:any) -> boolean
+    True if a string contains a substring, or a list/map contains an item (same as `item in container`).
+
+starts_with(text:string, prefix:string) -> boolean
+    True if text starts with prefix.
+
+ends_with(text:string, suffix:string) -> boolean
+    True if text ends with suffix.
+
+substring(text:string, start:number, end?:number) -> string
+    Part of a string (end is excluded; negative counts from the end).
+
+lower(text:string) -> string
+    Lower case.
+
+upper(text:string) -> string
+    Upper case.
+
+trim(text:string) -> string
+    Removes spaces at both ends.
+
+regex_match(text:string, pattern:string) -> boolean
+    True if the whole text matches the regular expression.
+
+regex_find(text:string, pattern:string) -> list
+    All matches of a regular expression (a list of strings).
+
+regex_replace(text:string, pattern:string, replacement:string) -> string
+    Replaces regex matches.
+
+time_format(seconds:number) -> string
+    Seconds as m:ss or h:mm:ss.
+
+--- timing ---
+
+wait(seconds:number)
+    Pauses this script (not the game) for some seconds. Real time, measured with System.nanoTime.
+    [may pause the script]
+    example:
+        wait(0.5)
+
+wait_ms(milliseconds:number)
+    Pauses this script for some milliseconds.
+    [may pause the script]
+
+wait_tick(ticks?:number=1)
+    Pauses this script for some game ticks (20 per second).
+    [may pause the script]
+    example:
+        wait_tick(1)
+
+wait_frame(frames?:number=1)
+    Pauses this script for some rendered frames.
+    [may pause the script]
+
+wait_until(condition:function, timeout?:number) -> boolean
+    Waits until condition() is true, checking every frame. Returns false if the timeout (seconds) ran out first.
+    [may pause the script]
+    example:
+        wait_until(lambda: is_on_ground(), 5)
+
+get_time() -> number
+    Seconds from a steady clock (use differences between two calls).
+
+get_delta_time() -> number
+    Seconds the last frame took.
+
+get_tick() -> number
+    Client ticks since the game started.
+
+get_frame() -> number
+    Rendered frames since the game started.
+
+get_execution_time() -> number
+    Seconds since this script (task) started.
+
+set_timeout(fn:function, seconds:number) -> number
+    Calls fn once after some seconds. Returns a timer id for cancel_timer.
+
+set_interval(fn:function, seconds:number) -> number
+    Calls fn every few seconds until cancelled. Returns a timer id.
+
+cancel_timer(id:number) -> boolean
+    Stops a timer from set_timeout / set_interval.
+
+--- type ---
+
+num(x:any) -> number
+    Converts text to a number (error if it is not one).
+
+int(x:any) -> number
+    Whole number (rounds towards zero).
+
+bool(x:any) -> boolean
+    Truthiness of a value.
+
+type(x:any) -> string
+    Name of the type: number, string, boolean, nil, list, map, vec3, entity ...
+
+is_nil(x:any) -> boolean
+    True if x is nil.
+
+--- vector ---
+
+vec2(x:number, y:number) -> vec2
+    A 2D vector.
+
+vec3(x:number, y:number, z:number) -> vec3
+    A 3D vector (position or direction).
+    example:
+        vec3(0, 1.5, 0)
+
+rotation(yaw:number, pitch:number) -> rotation
+    A yaw/pitch pair in degrees. yaw, pitch = rotation(90, 0) unpacks it.
+
+distance(a:vec3, b:vec3) -> number
+    Distance between two points (entities and blocks count as their position).
+    example:
+        dist = distance(eyepos, allay)
+
+distance_squared(a:vec3, b:vec3) -> number
+    Squared distance (faster, good for comparing).
+
+distance_xz(a:vec3, b:vec3) -> number
+    Horizontal distance (ignores height).
+
+magnitude(v:vec3) -> number
+    Length of a vector.
+
+normalize(v:vec3) -> vec3
+    Same direction, length 1.
+
+dot(a:vec3, b:vec3) -> number
+    Dot product.
+
+cross(a:vec3, b:vec3) -> vec3
+    Cross product.
+
+reflect(v:vec3, normal:vec3) -> vec3
+    Reflect a vector off a surface with the given normal.
+
+project(a:vec3, b:vec3) -> vec3
+    Projection of a onto b.
+
+angle_between(a:vec3, b:vec3) -> number
+    Angle between two vectors in degrees.
+
+rotate_vector(v:vec3, yaw:number, pitch?:number=0) -> vec3
+    Rotates a vector like a look direction: pitch around X, then yaw around Y (degrees).
+
+vec_floor(v:vec3) -> vec3
+    Floors every component (block coordinates).
+
+get_direction(from:vec3, to:vec3) -> rotation
+    Yaw and pitch (degrees) that look from one point at another. Returns two values: yaw, pitch = get_direction(a, b).
+    example:
+        yaw, pitch = get_direction(get_eye_pos(), target)
+
+direction_from(yaw:number, pitch:number) -> vec3
+    Unit vector pointing where yaw/pitch (degrees) look.
+
+normalize_angle(angle:number) -> number
+    Wraps an angle in degrees into -180..180.
+
+angle_diff(from:number, to:number) -> number
+    Shortest signed turn in degrees from one angle to another (-180..180).
+
+angle_lerp(from:number, to:number, t:number) -> number
+    Interpolates between two angles along the shortest way.
+
+--- world ---
+
+get_world() -> string
+    Dimension id you are in (alias of get_dimension).
+    [runs on the client thread]
+
+get_dimension() -> string
+    Dimension id, e.g. minecraft:overworld.
+    [runs on the client thread]
+
+get_world_time() -> number
+    Ticks the world has existed.
+    [runs on the client thread]
+
+get_day_time() -> number
+    Time of day, 0-23999 (0 = sunrise, 6000 = noon, 13000 = night).
+    [runs on the client thread]
+
+get_weather() -> string
+    clear, rain or thunder.
+    [runs on the client thread]
+
+get_biome(pos?:vec3) -> string
+    Biome id at a position (default: where you stand).
+    [runs on the client thread]
+
+get_loaded_chunk_count() -> number
+    How many chunks the client currently has loaded.
+    [runs on the client thread]
+
+get_loaded_chunks(radius?:number) -> list<vec2>
+    Chunk coordinates (vec2 of chunk x, chunk z) that are loaded within radius chunks of the player (default 8, max 32).
+    [runs on the client thread]
+
+get_block(pos:vec3) -> block
+    The block at a position.
+    [runs on the client thread]
+    example:
+        b = get_block(vec3(0, 64, 0))
+        print(b.id)
+
+get_block_id(pos:vec3) -> string
+    Block id at a position, e.g. minecraft:stone.
+    [runs on the client thread]
+
+get_block_state(pos:vec3) -> map
+    Block id and properties at a position.
+    [runs on the client thread]
+
+get_block_property(pos:vec3, property:string) -> any
+    One block property (facing, powered, age ...), or nil.
+    [runs on the client thread]
+
+get_block_light(pos:vec3) -> number
+    Block light level 0-15.
+    [runs on the client thread]
+
+get_sky_light(pos:vec3) -> number
+    Sky light level 0-15.
+    [runs on the client thread]
+
+get_block_collision(pos:vec3) -> boolean
+    True if the block has a collision box.
+    [runs on the client thread]
+
+get_block_outline(pos:vec3) -> map
+    Map with min and max corners of the block's outline box in the world, or nil if it has none.
+    [runs on the client thread]
+
+is_chunk_loaded(pos:vec3) -> boolean
+    True if the chunk at this position is loaded.
+    [runs on the client thread]
+
+is_block_air(pos:vec3) -> boolean
+    True if the block is air.
+    [runs on the client thread]
+
+is_block_solid(pos:vec3) -> boolean
+    True if the block is solid.
+    [runs on the client thread]
+
+is_block_replaceable(pos:vec3) -> boolean
+    True if blocks can be placed into it (air, grass, water ...).
+    [runs on the client thread]
+
+is_block_fluid(pos:vec3) -> boolean
+    True if the block holds a fluid.
+    [runs on the client thread]
+
+get_fluid(pos:vec3) -> string
+    Fluid id at a position (minecraft:water, minecraft:lava) or nil.
+    [runs on the client thread]
+
+get_blocks_in_range(center:vec3, range:number, id?:string) -> list<block>
+    Blocks within a cube around a point (optionally only one block id). Limited to 40000 blocks scanned.
+    [runs on the client thread]
+
+get_nearest_block(id:string, range?:number=16) -> block
+    The nearest block of an id within range (max 20) of you, or nil.
+    [runs on the client thread]
+
+raycast(from:vec3, to:vec3) -> map
+    Casts a ray against blocks. Map: hit, type, pos, point, face, block.
+    [runs on the client thread]
+
+get_raycast_result() -> map
+    What your crosshair points at (block or entity): hit, type, pos, point, face, block, entity.
+    [runs on the client thread]
+
+get_crosshair_block() -> block
+    The block under your crosshair, or nil.
+    [runs on the client thread]
+
+get_crosshair_entity() -> entity
+    The entity under your crosshair, or nil.
+    [runs on the client thread]
+
+is_block(x:any) -> boolean
+    True if x is a block handle.
+
+block_raycast(range?:number=64, from?:vec3, direction?:vec3, fluids?:boolean=false) -> map
+    Ray from your eyes (or from) along direction (default: where you look) against blocks. Map: hit, type, pos, point, face, block, distance.
+    [runs on the client thread]
+    example:
+        r = block_raycast(20)
+        if r.hit:
+            overlay_block(r.block, "hitbox")
+
+entity_raycast(range?:number=64, from?:vec3, direction?:vec3, margin?:number=0.1) -> map
+    Ray against entities only (ignores walls). Map: hit, type, point, entity, distance.
+    [runs on the client thread]
+
+mixed_raycast(range?:number=64, from?:vec3, direction?:vec3, margin?:number=0.1, fluids?:boolean=false) -> map
+    Ray against blocks and entities: gives whichever is hit first (entities behind a wall do not count). Map: hit, type ("block", "entity" or "miss"), point, distance, plus pos/face/block or entity.
+    [runs on the client thread]
+
+
+==============================================================================
+6. VALUE TYPES AND THEIR MEMBERS
+==============================================================================
+
+### block
+    A block position. block.id, block.pos, block.solid, block.air, block.properties ...
+  prop   id : string  -  Block id.
+  prop   name : string  -  Display name.
+  prop   pos : vec3  -  Block coordinates.
+  prop   x : number  -  Block X.
+  prop   y : number  -  Block Y.
+  prop   z : number  -  Block Z.
+  prop   center : vec3  -  Centre of the block.
+  prop   air : boolean  -  True if air.
+  prop   solid : boolean  -  True if solid.
+  prop   replaceable : boolean  -  True if blocks can be placed into it.
+  prop   fluid : string  -  Fluid id or nil.
+  prop   light : number  -  Light the block emits.
+  prop   properties : map  -  Block state properties.
+  method distance(other: vec3) -> number  -  Distance from the block centre to a point.
+
+### boolean
+    true or false.
+
+### button  (extends gui)
+    GUI button
+  prop   text : string  -  Label.
+  prop   color : color  -  Background.
+  prop   hover_color : color  -  Background under the mouse.
+  prop   text_color : color  -  Label color.
+  prop   text_scale : number  -  Label size multiplier (does not change the button's size).
+  prop   border_color : color  -  Border.
+
+### checkbox  (extends gui)
+    GUI checkbox
+  prop   text : string  -  Label.
+  prop   checked : boolean  -  Ticked or not.
+  prop   color : color  -  Tick color.
+  prop   text_color : color  -  Label color.
+
+### color_ns
+    Color helpers: color.rgb(255, 0, 0), color.hsv(200, 1, 1), color.hex("#ff8800"), color.red ...
+  method rgb(r: number, g: number, b: number) -> number  -  One color value from red, green, blue (0-255). Use it anywhere a color is wanted.
+  method rgba(r: number, g: number, b: number, a: number) -> number  -  Color with alpha (0-255).
+  method hsv(h: number, s: number, v: number) -> number  -  Color from hue 0-360, saturation 0-1, value 0-1.
+  method hex(text: string) -> number  -  Color from "#RRGGBB" or a name like "orange".
+  method lerp(a: any, b: any, t: number) -> number  -  Blend between two colors (t from 0 to 1).
+  prop   white : number  -  The color white.
+  prop   black : number  -  The color black.
+  prop   red : number  -  The color red.
+  prop   green : number  -  The color green.
+  prop   blue : number  -  The color blue.
+  prop   yellow : number  -  The color yellow.
+  prop   orange : number  -  The color orange.
+  prop   purple : number  -  The color purple.
+  prop   pink : number  -  The color pink.
+  prop   cyan : number  -  The color cyan.
+  prop   gray : number  -  The color gray.
+  prop   lime : number  -  The color lime.
+  prop   brown : number  -  The color brown.
+  prop   teal : number  -  The color teal.
+
+### entity
+    A mob, item, projectile ... in the world. Use entity.health, entity.distance, entity:direction_to(point) ...
+  prop   name : string  -  Display name.
+  prop   type : string  -  Entity type id, e.g. minecraft:allay.
+  prop   id : number  -  Numeric id.
+  prop   uuid : string  -  UUID.
+  prop   position : vec3  -  Position of the feet.
+  prop   pos : vec3  -  Same as position.
+  prop   eye_pos : vec3  -  Position of the eyes.
+  prop   center : vec3  -  Centre of the bounding box (good aim point).
+  prop   eye_height : number  -  Eye height above feet.
+  prop   velocity : vec3  -  Movement per tick.
+  prop   rotation : rotation  -  Yaw and pitch.
+  prop   yaw : number  -  Horizontal angle.
+  prop   pitch : number  -  Vertical angle.
+  prop   look_vector : vec3  -  Unit vector it looks along.
+  prop   health : number  -  Health (nil if not living).
+  prop   max_health : number  -  Max health (nil if not living).
+  prop   distance : number  -  Distance from your eyes to its box.
+  prop   alive : boolean  -  True if alive.
+  prop   on_ground : boolean  -  True if standing on the ground.
+  prop   in_water : boolean  -  True if in water.
+  prop   in_lava : boolean  -  True if in lava.
+  prop   sneaking : boolean  -  True if sneaking.
+  prop   sprinting : boolean  -  True if sprinting.
+  prop   swimming : boolean  -  True if swimming.
+  prop   invisible : boolean  -  True if invisible.
+  prop   glowing : boolean  -  True if glowing.
+  prop   on_fire : boolean  -  True if burning.
+  prop   is_player : boolean  -  True if it is a player.
+  prop   is_baby : boolean  -  True if a baby mob.
+  prop   width : number  -  Box width.
+  prop   height : number  -  Box height.
+  prop   box : map  -  Map with min and max corners.
+  prop   age : number  -  Ticks since it appeared.
+  prop   vehicle : entity  -  What it rides, or nil.
+  prop   passengers : list  -  Entities riding it.
+  prop   can_see : boolean  -  True if you have a clear line of sight to it.
+  prop   held_item : item  -  Item in its main hand.
+  prop   armor_value : number  -  Armor points.
+  method distance_to(target: vec3) -> number  -  Distance from its position to a point (or entity/block).
+  method direction_to(target: vec3) -> rotation  -  Yaw and pitch from its eyes to a point.
+  method armor(slot: string) -> item  -  Armor piece: head, chest, legs or feet.
+
+### enum_block_face
+    A side of a block.
+  prop   up : string  -  Top.
+  prop   down : string  -  Bottom.
+  prop   north : string  -  North side (negative Z).
+  prop   south : string  -  South side (positive Z).
+  prop   east : string  -  East side (positive X).
+  prop   west : string  -  West side (negative X).
+  method values() -> list<string>  -  Every choice of this group as a list.
+
+### enum_easing
+    Speed curve of animate().
+  prop   linear : string  -  Constant speed.
+  prop   ease_in : string  -  Starts slow.
+  prop   ease_out : string  -  Ends slow.
+  prop   ease_in_out : string  -  Slow at both ends.
+  prop   back : string  -  Overshoots a little and comes back.
+  prop   bounce : string  -  Bounces at the end.
+  method values() -> list<string>  -  Every choice of this group as a list.
+
+### enum_entity_sort
+    How get_entities orders its result.
+  prop   distance : string  -  Nearest first (default).
+  prop   distance_desc : string  -  Farthest first.
+  prop   angle : string  -  Closest to where you are looking first.
+  prop   health : string  -  Lowest health first.
+  prop   name : string  -  By display name, A to Z.
+  prop   none : string  -  Unsorted.
+  method values() -> list<string>  -  Every choice of this group as a list.
+
+### enum_image_facing
+    Which way image_3d faces.
+  prop   camera : string  -  Always toward you.
+  prop   horizontal : string  -  Lying flat.
+  prop   north : string  -  Fixed, facing north.
+  prop   south : string  -  Fixed, facing south.
+  prop   east : string  -  Fixed, facing east.
+  prop   west : string  -  Fixed, facing west.
+  method values() -> list<string>  -  Every choice of this group as a list.
+
+### enum_ns
+    Lists of valid choices for options. Type enum. to see the groups, e.g. get_entities(sort = enum.entity_sort.health).
+  prop   entity_sort : enum_entity_sort  -  How get_entities orders its result.
+  prop   distance_sort : enum_entity_sort  -  Same as enum.entity_sort.
+  prop   overlay_shape : enum_overlay_shape  -  What overlay_block outlines.
+  prop   easing : enum_easing  -  Speed curve of animate().
+  prop   block_face : enum_block_face  -  A side of a block.
+  prop   plane : enum_plane  -  Which way plot_function runs.
+  prop   image_facing : enum_image_facing  -  Which way image_3d faces.
+
+### enum_overlay_shape
+    What overlay_block outlines.
+  prop   box : string  -  A full 1x1x1 cube.
+  prop   hitbox : string  -  The outline shape the game draws around the block.
+  prop   model : string  -  Follows the real block model.
+  prop   collision : string  -  The collision shape (what you bump into).
+  method values() -> list<string>  -  Every choice of this group as a list.
+
+### enum_plane
+    Which way plot_function runs.
+  prop   xy : string  -  Along X, height is Y.
+  prop   zy : string  -  Along Z, height is Y.
+  method values() -> list<string>  -  Every choice of this group as a list.
+
+### function
+    A function or lambda.
+
+### graph3d  (extends shape3d)
+    A graph or curve in the world (plot_function, plot_surface ...).
+  method color(c: any) -> nil  -  Sets the color.
+  method appearance(c: any, alpha?: number, thickness?: number) -> nil  -  Sets color, alpha (0-1) and thickness (blocks) at once.
+  method appearence(c: any, alpha?: number, thickness?: number) -> nil  -  Sets color, alpha (0-1) and thickness (blocks) at once.
+  method set_points(points: list<vec3>) -> nil  -  Replaces the graph with a new line through these points.
+
+### gui
+    A thing on the screen made with create_rect, create_textbox ... Read and write its properties: box.text, bar.value = 0.5
+  prop   name : string  -  A name to find it by: Folder.Name (a child of a Screen Folder made in the GUI editor, or of any element).
+  prop   folder : boolean  -  True for a Screen Folder (made in the GUI editor). Folder.enabled shows or hides everything inside.
+  prop   x : dim  -  Left position: pixels, or from_scale(0.5) for half the screen (or the parent).
+  prop   y : dim  -  Top position.
+  prop   w : dim  -  Width. nil = natural size.
+  prop   h : dim  -  Height. nil = natural size.
+  prop   anchor_x : number  -  0 = x is the left edge, 0.5 = the center, 1 = the right edge.
+  prop   anchor_y : number  -  0 = y is the top edge, 0.5 = the center, 1 = the bottom edge.
+  prop   visible : boolean  -  Hidden elements are not drawn and cannot be clicked.
+  prop   opacity : number  -  0 to 1.
+  prop   z : number  -  Draw order: higher is in front.
+  prop   parent : gui  -  Another element: x/y/w/h are then relative to it.
+  prop   enabled : boolean  -  Disabled widgets ignore input.
+  prop   click_through : boolean  -  Clicks go to what is behind it.
+  prop   tooltip : string  -  Text shown when the mouse rests on it.
+  prop   draggable : boolean  -  The player can drag it with the mouse (needs ui_cursor(true)). Fires on_drag.
+  prop   clip : boolean  -  Children are cut off at its edges.
+  prop   scrollable : boolean  -  The mouse wheel scrolls its children (use with clip = true).
+  prop   scroll_y : number  -  How far the children are scrolled up, in pixels.
+  prop   id : number  -  Unique number of this element.
+  prop   kind : string  -  rect, oval, line, label, image, icon, textbox, button, progress, checkbox or slider.
+  prop   screen_x : number  -  Left edge on screen, in pixels.
+  prop   screen_y : number  -  Top edge on screen, in pixels.
+  prop   screen_w : number  -  Width on screen, in pixels.
+  prop   screen_h : number  -  Height on screen, in pixels.
+  prop   hovered : boolean  -  The mouse is over it (needs ui_cursor(true)).
+  prop   pressed : boolean  -  The mouse button is held down on it.
+  prop   focused : boolean  -  A textbox that has the keyboard.
+  prop   removed : boolean  -  It was removed.
+  method remove() -> nil  -  Deletes it (and everything inside it).
+  method show() -> nil  -  Makes it visible.
+  method hide() -> nil  -  Hides it.
+  method toggle() -> nil  -  Shows it if hidden, hides it if shown.
+  method to_front() -> nil  -  Draws it above everything else.
+  method to_back() -> nil  -  Draws it below everything else.
+  method add_child(child: gui) -> nil  -  Puts another element inside this one (same as child.parent = this).
+  method find_child(name: string) -> gui  -  The child with this name, or nil.
+  method contains(x: number, y: number) -> boolean  -  True if the screen point is inside it.
+  method focus() -> nil  -  Gives a textbox the keyboard (use ui_cursor(true) so you can type).
+  method unfocus() -> nil  -  Takes the keyboard away from a textbox.
+  method animate(prop: string, to: any, seconds: number, easing?: easing) -> nil  -  Moves a property to a value over time. Easings: linear, ease_in, ease_out, ease_in_out, back, bounce.
+  method stop_animations() -> nil  -  Stops every running animation of it.
+
+### icon  (extends gui)
+    GUI icon
+  prop   item : any  -  An item id ("minecraft:diamond") or an item value.
+  prop   size : number  -  Pixels (16 is normal).
+  prop   count : number  -  Stack count shown on the icon (1 = hidden).
+
+### image  (extends gui)
+    GUI image
+  prop   texture : string  -  Texture id, e.g. "minecraft:textures/item/diamond.png" or the result of load_texture().
+  prop   tint : color  -  Multiplies the picture's colors (white = unchanged).
+  prop   u0 : number  -  Left edge of the part of the texture to show (0-1).
+  prop   v0 : number  -  Top edge (0-1).
+  prop   u1 : number  -  Right edge (0-1).
+  prop   v1 : number  -  Bottom edge (0-1).
+
+### image3d  (extends shape3d)
+    A picture standing in the world (image_3d).
+  prop   width : any  -  Image width (readable and writable).
+  prop   height : any  -  Image height (readable and writable).
+  prop   alpha : any  -  Image alpha (readable and writable).
+  prop   facing : any  -  Image facing (readable and writable).
+  prop   pos : vec3  -  Centre of the picture (readable and writable).
+
+### item
+    An item stack (a copy). item.id, item.count, item.durability, item.enchanted, item.empty.
+  prop   id : string  -  Item id.
+  prop   name : string  -  Display name.
+  prop   count : number  -  Stack size.
+  prop   empty : boolean  -  True for an empty slot.
+  prop   slot : number  -  Inventory slot it came from (-1 if unknown).
+  prop   durability : number  -  Durability left (nil if it cannot break).
+  prop   max_durability : number  -  Max durability (nil if it cannot break).
+  prop   enchanted : boolean  -  True if enchanted.
+  prop   enchantments : map  -  Enchantment id to level.
+  prop   max_stack : number  -  Max stack size.
+
+### label  (extends gui)
+    GUI label
+  prop   text : string  -  The text (use a newline for a second line).
+  prop   color : color  -  Text color.
+  prop   scale : number  -  Text size multiplier.
+  prop   shadow : boolean  -  Draw a drop shadow.
+  prop   align_x : number  -  Where the text sits inside its box: 0 = left, 0.5 = center, 1 = right.
+  prop   align_y : number  -  0 = top, 0.5 = middle, 1 = bottom.
+
+### line  (extends gui)
+    GUI line
+  prop   x2 : dim  -  End point x.
+  prop   y2 : dim  -  End point y.
+  prop   color : color  -  Line color.
+  prop   thickness : number  -  Pixels.
+
+### line3d  (extends shape3d)
+    A 3D line. Methods: set_endpoint(v), set_origin(v), color(c), appearance(c, alpha, thickness), delete().
+  method set_endpoint(to: vec3) -> nil  -  Moves the far end.
+  method setendpoint(to: vec3) -> nil  -  Same as set_endpoint.
+  method set_origin(from: vec3, to?: vec3) -> nil  -  Moves the start (and the far end too when you pass a second point).
+  method setorigin(from: vec3, to?: vec3) -> nil  -  Same as set_origin.
+  method set_points(from: vec3, to: vec3) -> nil  -  Moves both ends at once.
+  method setpoints(from: vec3, to: vec3) -> nil  -  Same as set_points.
+  method color(c: any) -> nil  -  Sets the color.
+  method appearance(c: any, alpha?: number, thickness?: number) -> nil  -  Sets color, alpha (0-1) and thickness (blocks) at once.
+  method appearence(c: any, alpha?: number, thickness?: number) -> nil  -  Sets color, alpha (0-1) and thickness (blocks) at once.
+  prop   origin : any  -  Line origin (readable and writable).
+  prop   endpoint : any  -  Line endpoint (readable and writable).
+  prop   length : any  -  Line length (readable and writable).
+
+### list
+    An ordered, changeable collection: [1, 2, 3].
+  prop   length : number  -  Number of elements.
+  method append(value: any) -> list  -  Adds a value at the end.
+  method pop(index?: number) -> any  -  Removes and returns the last (or given) element.
+  method contains(value: any) -> boolean  -  True if the list has an equal element.
+  method index_of(value: any) -> number  -  Position or -1.
+  method clear() -> nil  -  Removes everything.
+  method reverse() -> list  -  Reverses in place.
+  method join(sep?: string) -> string  -  Joins the elements into text.
+
+### map
+    Key/value pairs: {"name": "Khoa"}. Read with m["name"] or m.name.
+  prop   length : number  -  Number of keys.
+  method keys() -> list  -  The keys.
+  method values() -> list  -  The values.
+  method has(key: any) -> boolean  -  True if the key exists.
+  method get(key: any, default?: any) -> any  -  Value or default.
+  method remove(key: any) -> any  -  Removes a key.
+
+### module
+    A file loaded with implement.
+
+### nil
+    No value.
+
+### number
+    Decimal numbers. 10, 3.14, -5.
+
+### oval  (extends gui)
+    GUI oval
+  prop   color : color  -  Fill color: "#RRGGBB", a name like "red", or rgb(r,g,b,a).
+  prop   border_color : color  -  Outline color.
+  prop   border_width : number  -  Outline thickness in pixels.
+
+### overlay  (extends shape3d)
+    A filled + outlined shape on blocks or a box. Properties: shape, fill, fill_alpha, outline, outline_alpha, thickness, pos, size, visible.
+  prop   shape : any  -  Overlay shape (readable and writable).
+  prop   pos : any  -  Overlay pos (readable and writable).
+  prop   size : any  -  Overlay size (readable and writable).
+  prop   count : any  -  Overlay count (readable and writable).
+  method set_fill(c: any, alpha?: number) -> nil  -  Sets the fill color and alpha.
+  method set_outline(c: any, alpha?: number, thickness?: number) -> nil  -  Sets the outline color, alpha and thickness.
+  method set_shape(shape: overlay_shape) -> nil  -  Changes between "box", "hitbox", "model", "collision".
+  method set_blocks(blocks: any) -> nil  -  Replaces the covered blocks.
+
+### player  (extends entity)
+    A player (also an entity). entity.name, entity.ping, entity.gamemode ...
+  prop   ping : number  -  Latency in ms.
+  prop   gamemode : string  -  Game mode name.
+
+### progress  (extends gui)
+    GUI progress
+  prop   value : number  -  0 to 1.
+  prop   color : color  -  Bar color.
+  prop   background : color  -  Empty part color.
+  prop   border_color : color  -  Border.
+  prop   show_text : boolean  -  Print the percentage on the bar.
+
+### range
+    range(a, b): the numbers a .. b, both included.
+  prop   length : number  -  How many numbers.
+
+### rect  (extends gui)
+    GUI rect
+  prop   color : color  -  Fill color: "#RRGGBB", a name like "red", or rgb(r,g,b,a).
+  prop   border_color : color  -  Outline color.
+  prop   border_width : number  -  Outline thickness in pixels.
+  prop   radius : number  -  Corner radius in pixels.
+  prop   gradient_color : color  -  If set, the fill fades from color (top) to this (bottom).
+
+### rotation
+    Yaw and pitch in degrees. yaw, pitch = rotation(...) unpacks it.
+  prop   yaw : number  -  Horizontal angle (0 = south, -90 = east).
+  prop   pitch : number  -  Vertical angle (-90 = up, 90 = down).
+  prop   direction : vec3  -  Unit vector this rotation looks along.
+
+### shape3d
+    Anything drawn in the 3D world. Methods: delete(), show(), hide(). Properties can be changed: shape.visible = false
+  method delete() -> nil  -  Removes it from the world.
+  method show() -> nil  -  Makes it visible.
+  method hide() -> nil  -  Hides it (without deleting).
+  method set(name: string, value: any) -> nil  -  Changes a property by name.
+  prop   visible : boolean  -  False while hidden.
+  prop   through_walls : boolean  -  True when it is drawn on top of blocks (readable and writable).
+  prop   fill : number  -  Look of the shape (readable and writable).
+  prop   fill_alpha : number  -  Look of the shape (readable and writable).
+  prop   outline : number  -  Look of the shape (readable and writable).
+  prop   outline_alpha : number  -  Look of the shape (readable and writable).
+  prop   thickness : number  -  Look of the shape (readable and writable).
+  prop   alpha : number  -  Look of the shape (readable and writable).
+
+### slider  (extends gui)
+    GUI slider
+  prop   min : number  -  Smallest value.
+  prop   max : number  -  Largest value.
+  prop   value : number  -  Current value.
+  prop   step : number  -  Snap to multiples of this (0 = smooth).
+  prop   color : color  -  Filled part.
+
+### string
+    Text. Methods: upper, lower, replace, contains, split, trim, starts_with, ends_with, substring, index_of.
+  prop   length : number  -  Number of characters.
+  method upper() -> string  -  Upper case.
+  method lower() -> string  -  Lower case.
+  method trim() -> string  -  Removes spaces at both ends.
+  method replace(old: string, new: string) -> string  -  Replaces every occurrence.
+  method contains(part: string) -> boolean  -  True if it contains part.
+  method starts_with(prefix: string) -> boolean  -  True if it starts with prefix.
+  method ends_with(suffix: string) -> boolean  -  True if it ends with suffix.
+  method split(sep?: string) -> list  -  Splits the string.
+  method index_of(part: string) -> number  -  Position of part, or -1.
+  method substring(start: number, end?: number) -> string  -  Part of the string.
+
+### textbox  (extends gui)
+    GUI textbox
+  prop   text : string  -  What is typed in it.
+  prop   placeholder : string  -  Gray hint shown while empty.
+  prop   multiline : boolean  -  More than one line (chosen at creation).
+  prop   color : color  -  Text color.
+  prop   background : color  -  Background color.
+  prop   border_color : color  -  Border color.
+  prop   blur_on_submit : boolean  -  Enter also leaves the box (on_unfocus fires).
+  method clear() -> nil  -  Empties the textbox.
+
+### tuple
+    Several values returned together (return a, b).
+  prop   length : number  -  Number of values.
+
+### vec2
+    A 2D vector. Fields: x, y.
+  prop   x : number  -  X component.
+  prop   y : number  -  Y component.
+  prop   length : number  -  Vector length.
+
+### vec3
+    A 3D position or direction. Fields: x, y, z. Methods: distance, dot, cross, normalize, lerp.
+  prop   x : number  -  X component.
+  prop   y : number  -  Y component.
+  prop   z : number  -  Z component.
+  prop   length : number  -  Vector length.
+  prop   normalized : vec3  -  Same direction, length 1.
+  prop   floor : vec3  -  Components rounded down.
+  prop   ceil : vec3  -  Components rounded up.
+  method distance(other: vec3) -> number  -  Distance to another point.
+  method dot(other: vec3) -> number  -  Dot product.
+  method cross(other: vec3) -> vec3  -  Cross product.
+  method normalize() -> vec3  -  Same direction, length 1.
+  method lerp(other: vec3, t: number) -> vec3  -  Interpolate towards another point.
+
+
+==============================================================================
+7. EVENTS (26)   syntax:  on_name(filter...):  then an indented block
+==============================================================================
+
+on_click(element)
+    An element was clicked (needs ui_cursor(true)). on_click(button): runs for that element only. Gives element, button, x, y.
+    variables inside the block: y: number, value: any, x: number, button: string, text: string, element: gui
+
+on_submit(element)
+    Enter was pressed in a textbox: on_submit(box). Gives element and text.
+    variables inside the block: value: any, element: gui, text: string
+
+on_change(element)
+    A textbox was edited, a checkbox ticked or a slider moved by the player: on_change(x). Gives element, text and value.
+    variables inside the block: value: any, element: gui, text: string
+
+on_focus(element)
+    A textbox got the keyboard.
+    variables inside the block: value: any, element: gui, text: string
+
+on_unfocus(element)
+    A textbox lost the keyboard (clicked away, Esc, or Enter).
+    variables inside the block: value: any, element: gui, text: string
+
+on_enter(element)
+    Enter was pressed in a textbox (same moment as on_submit): element.On_Enter: ...
+    variables inside the block: value: any, element: gui, text: string
+
+on_type(element)
+    A character was typed into a textbox. Gives element, char and text.
+    variables inside the block: value: any, char: string, text: string, element: gui
+
+on_press(element)
+    A mouse button went down on an element. Gives element, button, x, y.
+    variables inside the block: y: number, value: any, x: number, button: string, text: string, element: gui
+
+on_release(element)
+    A mouse button was released after pressing an element. Gives element, button, x, y.
+    variables inside the block: y: number, value: any, x: number, button: string, text: string, element: gui
+
+on_right_click(element)
+    An element was right-clicked. Gives element, button, x, y.
+    variables inside the block: y: number, value: any, x: number, button: string, text: string, element: gui
+
+on_double_click(element)
+    An element was double-clicked. Gives element, button, x, y.
+    variables inside the block: y: number, value: any, x: number, button: string, text: string, element: gui
+
+on_scroll(element)
+    The mouse wheel turned over an element. Gives element and delta.
+    variables inside the block: value: any, delta: number, text: string, element: gui
+
+on_drag_end(element)
+    A draggable element was dropped.
+    variables inside the block: value: any, element: gui, text: string
+
+on_drag(element)
+    A draggable element is being moved with the mouse.
+    variables inside the block: value: any, element: gui, text: string
+
+on_hover(element)
+    The mouse entered an element.
+    variables inside the block: value: any, element: gui, text: string
+
+on_unhover(element)
+    The mouse left an element.
+    variables inside the block: value: any, element: gui, text: string
+
+on_render()
+    Runs every frame while the script is running. Gives dt (seconds since the last frame).
+    variables inside the block: dt: number
+
+on_key_press(key)
+    A keyboard key or mouse button went down (key spec such as "G" or "ctrl+G").
+    variables inside the block: key: string
+
+on_key_release(key)
+    A keyboard key or mouse button went up.
+    variables inside the block: key: string
+
+on_mouse_press(button)
+    A mouse button went down (MOUSE_LEFT ...).
+    variables inside the block: button: string
+
+on_chat()
+    A chat message arrived.
+    variables inside the block: message: string
+
+on_damage()
+    Your health went down.
+    variables inside the block: amount: number, health: number
+
+on_join()
+    You joined a world or server.
+
+on_leave()
+    You left the world or server.
+
+on_screen_open()
+    A menu was opened.
+    variables inside the block: screen: string
+
+on_screen_close()
+    A menu was closed.
+    variables inside the block: screen: string
+
+
+==============================================================================
+8. ENUMS  (enum.<group>.<value>, a value is just its text; wrong choices are errors)
+==============================================================================
+
+enum.entity_sort: distance, distance_desc, angle, health, name, none
+
+enum.overlay_shape: box, hitbox, model, collision
+
+enum.easing: linear, ease_in, ease_out, ease_in_out, back, bounce
+
+enum.block_face: up, down, north, south, east, west
+
+enum.plane: xy, zy
+
+enum.image_facing: camera, horizontal, north, south, east, west
+
+
+==============================================================================
+9. GUI ELEMENTS (script API: create with the kind functions, set properties with el.prop = value)
+==============================================================================
+
+Common properties (every element):
+  name : string  -  A name to find it by: Folder.Name (a child of a Screen Folder made in the GUI editor, or of any element).
+  folder : boolean  -  True for a Screen Folder (made in the GUI editor). Folder.enabled shows or hides everything inside.
+  x : dim  -  Left position: pixels, or from_scale(0.5) for half the screen (or the parent).
+  y : dim  -  Top position.
+  w : dim  -  Width. nil = natural size.
+  h : dim  -  Height. nil = natural size.
+  anchor_x : number  -  0 = x is the left edge, 0.5 = the center, 1 = the right edge.
+  anchor_y : number  -  0 = y is the top edge, 0.5 = the center, 1 = the bottom edge.
+  visible : boolean  -  Hidden elements are not drawn and cannot be clicked.
+  opacity : number  -  0 to 1.
+  z : number  -  Draw order: higher is in front.
+  parent : gui  -  Another element: x/y/w/h are then relative to it.
+  enabled : boolean  -  Disabled widgets ignore input.
+  click_through : boolean  -  Clicks go to what is behind it.
+  tooltip : string  -  Text shown when the mouse rests on it.
+  draggable : boolean  -  The player can drag it with the mouse (needs ui_cursor(true)). Fires on_drag.
+  clip : boolean  -  Children are cut off at its edges.
+  scrollable : boolean  -  The mouse wheel scrolls its children (use with clip = true).
+  scroll_y : number  -  How far the children are scrolled up, in pixels.
+
+Kind "rect" properties:
+  color : color  -  Fill color: "#RRGGBB", a name like "red", or rgb(r,g,b,a).
+  border_color : color  -  Outline color.
+  border_width : number  -  Outline thickness in pixels.
+  radius : number  -  Corner radius in pixels.
+  gradient_color : color  -  If set, the fill fades from color (top) to this (bottom).
+
+Kind "oval" properties:
+  color : color  -  Fill color: "#RRGGBB", a name like "red", or rgb(r,g,b,a).
+  border_color : color  -  Outline color.
+  border_width : number  -  Outline thickness in pixels.
+
+Kind "line" properties:
+  x2 : dim  -  End point x.
+  y2 : dim  -  End point y.
+  color : color  -  Line color.
+  thickness : number  -  Pixels.
+
+Kind "label" properties:
+  text : string  -  The text (use a newline for a second line).
+  color : color  -  Text color.
+  scale : number  -  Text size multiplier.
+  shadow : boolean  -  Draw a drop shadow.
+  align_x : number  -  Where the text sits inside its box: 0 = left, 0.5 = center, 1 = right.
+  align_y : number  -  0 = top, 0.5 = middle, 1 = bottom.
+
+Kind "image" properties:
+  texture : string  -  Texture id, e.g. "minecraft:textures/item/diamond.png" or the result of load_texture().
+  tint : color  -  Multiplies the picture's colors (white = unchanged).
+  u0 : number  -  Left edge of the part of the texture to show (0-1).
+  v0 : number  -  Top edge (0-1).
+  u1 : number  -  Right edge (0-1).
+  v1 : number  -  Bottom edge (0-1).
+
+Kind "icon" properties:
+  item : any  -  An item id ("minecraft:diamond") or an item value.
+  size : number  -  Pixels (16 is normal).
+  count : number  -  Stack count shown on the icon (1 = hidden).
+
+Kind "textbox" properties:
+  text : string  -  What is typed in it.
+  placeholder : string  -  Gray hint shown while empty.
+  multiline : boolean  -  More than one line (chosen at creation).
+  color : color  -  Text color.
+  background : color  -  Background color.
+  border_color : color  -  Border color.
+  blur_on_submit : boolean  -  Enter also leaves the box (on_unfocus fires).
+
+Kind "button" properties:
+  text : string  -  Label.
+  color : color  -  Background.
+  hover_color : color  -  Background under the mouse.
+  text_color : color  -  Label color.
+  text_scale : number  -  Label size multiplier (does not change the button's size).
+  border_color : color  -  Border.
+
+Kind "progress" properties:
+  value : number  -  0 to 1.
+  color : color  -  Bar color.
+  background : color  -  Empty part color.
+  border_color : color  -  Border.
+  show_text : boolean  -  Print the percentage on the bar.
+
+Kind "checkbox" properties:
+  text : string  -  Label.
+  checked : boolean  -  Ticked or not.
+  color : color  -  Tick color.
+  text_color : color  -  Label color.
+
+Kind "slider" properties:
+  min : number  -  Smallest value.
+  max : number  -  Largest value.
+  value : number  -  Current value.
+  step : number  -  Snap to multiples of this (0 = smooth).
+  color : color  -  Filled part.
+
+
+==============================================================================
+10. EXAMPLE PROGRAMS (complete, working files shipped with the mod)
+==============================================================================
+
+----- main.kcd -----
+# ============================================================
+#  KCoder example folder
+#  Select "Example" in /kcoder and press Run. Then, in game:
+#     G  smoothly look at the nearest entity (100 small steps)
+#     H  feed the nearest allay (needs an amethyst shard in the hotbar)
+#     J  show your status in chat
+#     K  run the language tour (see the Log panel)
+#  Script hotkeys are read BEFORE Minecraft's Controls, so a key used
+#  here will not trigger the normal Minecraft action while this runs.
+#  Every .kcd file in the root of the folder starts when you press Run.
+#  Files in sub folders only run when another file does `implement` on them.
+# ============================================================
+
+aim = implement ./features/aim.kcd
+allay = implement ./features/allay.kcd
+tour = implement ./features/basics.kcd
+status = implement ./features/status.kcd
+
+print("Example loaded. Keys: G aim, H feed allay, J status, K tour")
+
+on_key_press("G"):
+    aim:aim_nearest()
+
+on_key_press("H"):
+    allay:feed_nearest()
+
+on_key_press("J"):
+    status:show()
+
+on_key_press("K"):
+    tour:run()
+
+
+----- events.kcd -----
+# Events: a block that starts with on_xxx(...): runs every time it happens.
+# A handler that is still running (it has a wait inside) ignores new events.
+
+on_damage():
+    print("Ouch! -{amount} health, {health} left")
+
+on_join():
+    print("Joined a world")
+
+on_chat():
+    if contains(message, "khoa"):
+        print("Someone said my name: {message}")
+
+# on_interval(5) runs every 5 seconds. Remove the # to try it:
+# on_interval(5):
+#     print("tick tock, tick {get_tick()}")
+
+
+----- features/aim.kcd -----
+# Smooth aiming, written out by hand.
+# Each step recalculates the direction, so a moving target is followed,
+# and the last step lands exactly on the target.
+
+function aim_nearest():
+    target = get_nearest_entity(nil, 30)
+    if target == nil:
+        print("No entity within 30 blocks")
+        return
+    print("Aiming at {target.name} ({target.type}), {target.distance} blocks away")
+    for n in range(1, 100):
+        wait(random(1, 3) / 1000)
+        yaw, pitch = get_direction(get_player_eye_pos(), target.center)
+        turn_towards(yaw, pitch, 1 / (101 - n))
+    print("Done. Crosshair on target: {is_looking_at(target)}")
+
+# The same thing in one line (built in):
+function aim_nearest_fast():
+    target = get_nearest_entity(nil, 30)
+    if target != nil:
+        look_at_smooth(target, 100, 1, 3)
+
+
+----- features/allay.kcd -----
+# Feed every allay within 3.5 blocks of your eyes.
+
+function feed_nearest():
+    allays = get_entities_in_range(minecraft:allay, 3.5)
+    if len(allays) == 0:
+        print("No allay within 3.5 blocks")
+        return
+    slot = find_hotbar_item(minecraft:amethyst_shard)
+    if slot == 0:
+        print("Put an amethyst shard in your hotbar first")
+        return
+    hotbar_select(slot)
+    for a in allays:
+        look_at_smooth(a, 20, 1, 2)
+        wait(0.1)
+        interact_entity(a)
+        wait(0.5)
+    print("Fed {len(allays)} allay(s)")
+
+
+----- features/gui.kcd -----
+# GUI demo. Run this script, then press H to show / hide a small window.
+# Elements are drawn on the HUD. ui_cursor(true) gives you a mouse so you can click and type (Esc closes it).
+
+panel = create_rect(from_scale(0.5), from_scale(0.5), 220, 112, "#161A21")
+panel.anchor_x = 0.5
+panel.anchor_y = 0.5
+panel.radius = 6
+panel.border_width = 1
+panel.border_color = "#2B3240"
+panel.visible = false
+
+title = create_text(10, 8, "GUI demo", "white")
+title.parent = panel
+box = create_textbox(10, 24, 200, 16, "type something, press Enter")
+box.parent = panel
+check = create_checkbox(10, 48, "A checkbox")
+check.parent = panel
+bar = create_progress_bar(10, 70, 200, 10, 0)
+bar.parent = panel
+bar.show_text = true
+btn = create_button(10, 88, 90, 16, "Fill the bar")
+btn.parent = panel
+
+on_key_press("H"):
+    panel.toggle()
+    if panel.visible:
+        panel.opacity = 0
+        animate(panel, "opacity", 1, 0.25, "ease_out")
+        ui_cursor(true)
+    else:
+        ui_cursor(false)
+
+on_submit(box):
+    show_toast("You typed: {text}", 3, "green")
+
+on_click(btn):
+    bar.value = 0
+    animate(bar, "value", 1, 1.5, "ease_in_out")
+
+on_change(check):
+    print("checked = {value}")
+
+
+----- features/ui_kit.kcd -----
+# ui_kit.kcd - ready-made GUI parts: draggable windows, tabs and dropdowns.
+# Use it from another file:
+#     kit = implement ./features/ui_kit.kcd
+#     win = kit:window("Settings", 100, 80, 220, 140)
+# A window is a map: win.frame (drag it by any empty spot), win.title, win.close, win.body.
+# Put your own elements inside with element.parent = win.body
+
+function window(title, x, y, w, h):
+    frame = create_rect(x, y, w, h, "#161A21")
+    frame.radius = 6
+    frame.border_width = 1
+    frame.border_color = "#2B3240"
+    frame.draggable = true
+    bar = create_rect(0, 0, w, 18, "#222A36")
+    bar.parent = frame
+    bar.click_through = true
+    label = create_text(8, 5, title, "white")
+    label.parent = frame
+    label.click_through = true
+    close = create_button(w - 18, 2, 14, 14, "x")
+    close.parent = frame
+    body = create_rect(0, 18, w, h - 18, "#00000000")
+    body.parent = frame
+    body.click_through = true
+    return {"frame": frame, "bar": bar, "title": label, "close": close, "body": body}
+
+# Tab buttons with one page each. Show a page with kit:select_tab(t, index).
+function tabs(parent, names, x, y, w, h):
+    buttons = []
+    pages = []
+    n = len(names)
+    bw = w / n
+    for i in range(0, n - 1):
+        b = create_button(x + i * bw, y, bw - 2, 16, names[i])
+        b.parent = parent
+        buttons.append(b)
+        page = create_rect(x, y + 20, w, h - 20, "#00000000")
+        page.parent = parent
+        page.click_through = true
+        page.visible = i == 0
+        pages.append(page)
+    return {"buttons": buttons, "pages": pages}
+
+function select_tab(t, index):
+    for i in range(0, len(t.pages) - 1):
+        t.pages[i].visible = i == index
+
+# A button that opens a list. Use kit:dropdown_toggle(d) when d.head is clicked and kit:dropdown_pick(d, i) when d.entries[i] is clicked.
+function dropdown(parent, x, y, w, options):
+    head = create_button(x, y, w, 16, options[0])
+    head.parent = parent
+    entries = []
+    for i in range(0, len(options) - 1):
+        entry = create_button(x, y + 16 + i * 16, w, 16, options[i])
+        entry.parent = parent
+        entry.visible = false
+        entry.z = 50
+        entries.append(entry)
+    return {"head": head, "entries": entries, "options": options, "value": options[0], "index": 0}
+
+function dropdown_toggle(d):
+    for entry in d.entries:
+        entry.visible = not entry.visible
+
+function dropdown_pick(d, i):
+    d.value = d.options[i]
+    d.index = i
+    d.head.text = d.options[i]
+    for entry in d.entries:
+        entry.visible = false
+
+
+----- features/ui_kit_demo.kcd -----
+# Demo of ui_kit.kcd: a draggable window with tabs and a dropdown. Press U to show or hide it.
+kit = implement ./ui_kit.kcd
+
+win = kit:window("UI kit demo", 120, 70, 240, 150)
+win.frame.visible = false
+t = kit:tabs(win.body, ["Main", "Options"], 8, 4, 224, 120)
+hello = create_text(4, 6, "Drag the window by its edge", "white")
+hello.parent = t.pages[0]
+d = kit:dropdown(t.pages[1], 4, 6, 120, ["Easy", "Normal", "Hard"])
+
+on_key_press("U"):
+    win.frame.toggle()
+    ui_cursor(win.frame.visible)
+
+on_click(win.close):
+    win.frame.hide()
+    ui_cursor(false)
+
+on_click(t.buttons[0]):
+    kit:select_tab(t, 0)
+
+on_click(t.buttons[1]):
+    kit:select_tab(t, 1)
+
+on_click(d.head):
+    kit:dropdown_toggle(d)
+
+on_click(d.entries[0]):
+    kit:dropdown_pick(d, 0)
+
+on_click(d.entries[1]):
+    kit:dropdown_pick(d, 1)
+
+on_click(d.entries[2]):
+    kit:dropdown_pick(d, 2)
+    show_toast("Hard mode!", 2, "red")
+
+
+----- features/draw3d.kcd -----
+# 3D drawing demo. Run it, then look at blocks. Press K to clear everything.
+# color.rgb(r, g, b) packs a color; alpha values go from 0 (invisible) to 1 (solid); thickness is in blocks.
+
+# 1) Outline whatever block you look at, following its real model
+state = {"last": nil}
+on_render():
+    b = get_crosshair_block()
+    if state.last != nil:
+        state.last:delete()
+        state.last = nil
+    if b != nil:
+        state.last = overlay_block(b, "model", color.rgb(255, 200, 0), 0.2, color.rgb(255, 255, 255), 1, 0.02)
+
+# 2) A free box and a line to it
+box = box_overlay(vec3(0.5, 100, 0.5), vec3(2, 1, 0.5), color.rgb(255, 0, 0), 0.3, color.rgb(255, 255, 0), 1, 0.05)
+rope = line_3d(get_player_position(), vec3(0.5, 100, 0.5), color.rgb(0, 200, 255), 1, 0.05)
+
+# 3) Graphs
+wave = plot_function(vec3(0, 102, 0), lambda x: sin(x) * 2, -10, 10, 200, color.rgb(0, 255, 120), 1, 0.06)
+helix = plot_parametric(vec3(8, 100, 0), lambda t: vec3(cos(t) * 2, t * 0.3, sin(t) * 2), 0, 25, 300, color.rgb(255, 100, 255))
+surf = plot_surface(vec3(0, 105, 10), lambda x, z: sin(x) * cos(z), -5, 5, -5, 5, 24, color.rgb(255, 160, 0), 1, 0.03)
+
+# 4) The ray from your eyes
+on_key_press("R"):
+    r = mixed_raycast(50)
+    print("hit {r.type} at distance {r.distance}")
+
+on_key_press("K"):
+    clear_overlays()
+
+
+----- features/status.kcd -----
+# Reading information about the player and the world.
+
+function show():
+    pos = get_player_position()
+    print("Position: {pos}")
+    print("Health: {get_player_health()} / {get_player_max_health()}")
+    print("Dimension: {get_dimension()}, biome: {get_biome()}")
+    held = get_held_item()
+    print("Holding: {held.id} x{held.count}")
+    block = get_crosshair_block()
+    if block != nil:
+        print("Looking at block: {block.id} at {block.pos}")
+    chat("[KCoder] health {get_player_health()}, food {get_player_hunger()}")
+    actionbar("Health {get_player_health()}")
+
+
+----- features/basics.kcd -----
+# A tour of the language. Press K in game (or run it from the console:
+#   cd ./Example/features/
+#   ./basics.kcd:run()
+# ). Everything it prints shows in the Log panel.
+
+function stats(numbers):
+    # A function can return several values.
+    return min(numbers), max(numbers), sum(numbers) / len(numbers)
+
+function countdown(n):
+    while n > 0:
+        print("  {n}")
+        n = n - 1
+        wait_tick(1)
+
+function run():
+    print("--- variables, math, strings ---")
+    x = 10
+    y = 3.5
+    print("x + y = {x + y}, x * y = {x * y}, x / 4 = {x / 4}")
+    name = "Steve"
+    print("Hello " + name + ", upper: " + upper(name) + ", length {len(name)}")
+
+    print("--- if / elif / else ---")
+    if x > 20:
+        print("big")
+    elif x > 5:
+        print("medium")
+    else:
+        print("small")
+
+    print("--- lists ---")
+    items = ["apple", "stone", "diamond"]
+    append(items, "gold")
+    for item in items:
+        if item == "stone":
+            continue
+        print("  item: {item}")
+
+    print("--- ranges are inclusive ---")
+    total = 0
+    for i in range(1, 5):
+        total = total + i
+    print("1+2+3+4+5 = {total}")
+
+    print("--- several return values ---")
+    low, high, average = stats([4, 8, 15, 16, 23, 42])
+    print("min {low}, max {high}, average {average}")
+
+    print("--- vectors ---")
+    a = vec3(0, 0, 0)
+    b = vec3(3, 4, 0)
+    print("distance {distance(a, b)}, middle {(a + b) / 2}, length of b {magnitude(b)}")
+    yaw, pitch = get_direction(a, vec3(0, 0, 10))
+    print("direction to +Z: yaw {yaw}, pitch {pitch}")
+
+    print("--- break and wait ---")
+    for i in range(1, 100):
+        if i > 3:
+            break
+        print("  i = {i}")
+        wait(0.2)
+
+    print("--- wait_tick ---")
+    countdown(3)
+    print("Tour finished")
+
+
+----- README.kcd -----
+# KCoder quick reference (this file only has comments, so running it does nothing)
+#
+# /kcoder                          open the manager
+# /kcoder run <folder>             run a script folder
+# /kcoder stop [folder]            stop one folder (or all of them)
+# /kcoder multiplayer true|false   allow clicks / aiming / chat on servers
+#
+# Files: .kcd. Indentation makes blocks (like Python). # starts a comment.
+# Hotkeys: on_key_press("G"):   on_key_press("ctrl+shift+K"):   on_key_press("MOUSE_RIGHT"):
+# Waiting: wait(seconds)  wait_ms(ms)  wait_tick(n)  wait_frame(n)  wait_until(fn)
+# Modules: name = implement ./features/file.kcd   then   name:function()
+# Editor: Ctrl+Space suggestions, Ctrl+S save, Ctrl+/ comment.
+# Console tab: cd ./Example/features/   then   ./basics.kcd:run()
+

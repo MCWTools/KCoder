@@ -1,0 +1,33 @@
+{
+	"schemaVersion": 1,
+	"id": "khoascript",
+	"version": "${version}",
+	"name": "KCoder",
+	"description": "Write .kcd scripts in-game (Python-like indentation) to automate client actions: clicks, aiming, hotbar, waits, events. Built-in editor with suggestions.",
+	"authors": [
+		"Khoa"
+	],
+	"license": "CC0-1.0",
+	"icon": "assets/khoascript/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"main": [
+			"khoa.script.KhoaScript"
+		],
+		"client": [
+			"khoa.script.client.KhoaScriptClient"
+		]
+	},
+	"mixins": [
+		{
+			"config": "khoascript.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

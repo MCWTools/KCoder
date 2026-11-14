@@ -1,0 +1,36 @@
+KCODER - client-side scripting platform for Minecraft 26.3 (Fabric)
+
+An in-game IDE and a Python-like language. You type /kcoder, write scripts in script folders, press Run, and they control the game client.
+
+LANGUAGE
+- Python-like syntax: if/elif/else, while, repeat, for, try/except/finally, def/lambda, list/map comprehensions, slices, tuples, f-style "{expr}" strings.
+- Coroutines: wait(), wait_until() pause only the script, never the game. Events: on_key_press("G"): ... (tick, frame, chat, damage, etc.).
+- Maps accept any value as key (entities too); missing key reads as nil.
+- Variables: plain `x = 1` changes the variable wherever it lives or creates a global; `local x = 1` keeps it private to the function/handler; `const`.
+- Lua-style enums with editor suggestions: get_entities(sort = enum.entity_sort.health). Strict argument type checking with readable errors.
+- Typed declarations as editor hints: `lines[allay]: line3d = draw_line_3d(...)`, `xs: list<entity> = []`, `m: map<entity,line3d> = {}`.
+- Modules: `kit = implement ./features/ui_kit.kcd`; vec2/vec3 maths; resource ids unquoted (minecraft:allay).
+
+IDE (all in game)
+- Script folders, multi-file projects, syntax highlighting (true/false in bold lime/red), autocomplete and signature help driven by the live function registry, type inference, error underlines, code folding, find/replace, undo, Ctrl+C/Ctrl+X on a line without selection.
+- Log and console panels, a debugger (breakpoints, step over/into/out, variable view) and a profiler.
+
+GAME ACCESS
+- Entities and sorting, blocks and block-around queries, block/entity/mixed raycasts, inventory and containers, NBT/data components, attributes, boss bars, chat, keys, mouse, camera, screenshots, file and JSON access, permission gates for dangerous actions.
+
+3D DRAWING
+- Block overlays (box, hitbox, model, collision), boxes, lines with thickness, function/parametric/surface graphs, points and values, images in the world, colors (rgb/rgba/hsv/hex/lerp), see-through-walls option, per-script cleanup, delete(x), clear_overlays().
+
+SCRIPT GUI
+- rect, oval, line, label, image, icon, textbox, button, progress, checkbox, slider; parenting, anchors, scale+pixel sizes, clipping, scrolling, dragging, tween animations with easings, toasts, a ready ui_kit module.
+
+VISUAL GUI EDITOR (/kcoder gui)
+- Place Screen Folders, Color Frames, Text, Buttons, Images (PNG texture, tint, transparency) and Textboxes.
+- Translucent explorer tree (collapsible, right-click to create inside any node, drag to reparent) and draggable properties panel (name, scale+offset size/position, colors, text alignment/scale, texture picker).
+- Viewport: click/drag to select and move, handles to resize, right-click menus, undo/redo, autosave to kcoder/gui.json (outside script folders).
+- Other mods' menus and the inventory cannot open while editing.
+- Script access by name: ScreenFolder.enabled = true; ScreenFolder.MoneyText.text = "000"; ScreenFolder.Icon.texture = "localstorage/textures/icon.png"; script-made elements can be children of a Screen Folder.
+
+STATUS: everything compiles and passes the unit tests; in-game verification is still pending for the 3D rendering, GUI editor and debugger.
+
+Full generated reference (every function, type, event, enum, GUI property and example program): run /kcoder docs in game -> kcoder/KCODER_REFERENCE.txt
