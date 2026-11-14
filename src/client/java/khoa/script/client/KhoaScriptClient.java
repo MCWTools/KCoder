@@ -46,9 +46,15 @@ public class KhoaScriptClient implements ClientModInitializer {
 			}
 		});
 		ClientPlayConnectionEvents.JOIN.register((handler, sender, mc) -> khoa.script.client.game.ChatLog.onJoin(mc));
-		ClientPlayConnectionEvents.DISCONNECT.register((handler, mc) -> khoa.script.client.game.ChatLog.onLeave(mc));
+		ClientPlayConnectionEvents.DISCONNECT.register((handler, mc) -> {
+			khoa.script.client.game.ChatLog.onLeave(mc);
+			khoa.script.client.guiedit.GuiStore.saveIfChanged();
+		});
 		ClientTickEvents.END_CLIENT_TICK.register(khoa.script.client.game.ChatLog::tick);
-		ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> ScriptFolders.stopAll());
+		ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> {
+			khoa.script.client.guiedit.GuiStore.saveIfChanged();
+			ScriptFolders.stopAll();
+		});
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, ctx) -> dispatcher.register(ClientCommands.literal("kcoder")
 			.executes(c -> {
 				openGui = true;

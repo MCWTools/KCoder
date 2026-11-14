@@ -87,11 +87,33 @@ public final class GuiStore {
 
 	private static boolean dataLoaded;
 
-	/** Called every frame: reads the layout as soon as the game is far enough along to create widgets. */
+	private static String lastSaved = "";
+	private static long nextCheck;
+
+	/** Called every frame: reads the layout as soon as the game is far enough along to create widgets, then keeps the file up to date. */
 	public static void tick() {
 		if (!dataLoaded && net.minecraft.client.Minecraft.getInstance().font != null) {
 			dataLoaded = true;
 			load();
+			lastSaved = snapshot(false);
+			nextCheck = System.currentTimeMillis() + 2000;
+			return;
+		}
+		if (dataLoaded && System.currentTimeMillis() >= nextCheck) {
+			nextCheck = System.currentTimeMillis() + 2000;
+			saveIfChanged();
+		}
+	}
+
+	/** Saves when anything differs from the file (visibility, typed text, moves made by scripts or the player), so it survives rejoining and restarting. */
+	public static void saveIfChanged() {
+		if (!dataLoaded) {
+			return;
+		}
+		String now = snapshot(false);
+		if (!now.equals(lastSaved)) {
+			lastSaved = now;
+			save();
 		}
 	}
 
@@ -364,6 +386,7 @@ public final class GuiStore {
 	}
 
 	public static void save() {
+		lastSaved = snapshot(false);
 		try {
 			Files.createDirectories(dir());
 			Files.writeString(file(), snapshot(true), StandardCharsets.UTF_8);
@@ -381,8 +404,12 @@ public final class GuiStore {
 		UiElement e = UiManager.create(session(), kind, false);
 		Object props = node.get("props");
 		if (props instanceof Map<?, ?> pm) {
+			boolean folder = Boolean.TRUE.equals(pm.get("folder"));
 			for (Map.Entry<?, ?> en : ((Map<Object, Object>) pm).entrySet()) {
 				Object v = en.getValue();
+				if (folder && "enabled".equals(en.getKey())) {
+					continue; // for a folder "enabled" writes "visible", which would undo the saved visible state
+				}
 				if (v instanceof Map<?, ?> dm) {
 					v = new Dim(dm.get("scale") instanceof Double s ? s : 0, dm.get("px") instanceof Double p ? p : 0);
 				}
