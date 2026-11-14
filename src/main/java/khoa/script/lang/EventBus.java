@@ -72,8 +72,9 @@ public final class EventBus {
 		}
 		Session s = in.session;
 		List<Handler> list = handlers.computeIfAbsent(def.event(), k -> new CopyOnWriteArrayList<>());
-		// the same line registered again (a script ran its top level twice) replaces the old handler instead of duplicating it
-		list.removeIf(h -> h.session == s && h.file.equals(in.file) && h.line == def.line());
+		// the same line registered again with the same filters (a script ran its top level twice) replaces the old handler instead of duplicating it;
+		// the same line with other filters (on_hit(box) inside a for loop) is another handler and stays
+		list.removeIf(h -> h.session == s && h.file.equals(in.file) && h.line == def.line() && h.filters.equals(filters));
 		List<String> argNames = def.argNames();
 		if (argNames != null) {
 			for (String n : argNames) {

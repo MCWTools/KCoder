@@ -314,6 +314,15 @@ public final class Suggest {
 				}
 			}
 			String base = SuggestTypes.baseOf(type);
+			if (guiEl == null && !base.isEmpty() && sep == '.' && chain.find(0) && line.substring(0, chain.start(1)).isBlank()) {
+				// hitbox.On_Hit: and other events whose first argument is a value type (not a GUI element)
+				for (Registry.EventType ev : reg.events.values()) {
+					if (!ev.filters.isEmpty() && ev.filters.get(0).equals(base)) {
+						String shown = java.util.Arrays.stream(ev.name.substring(3).split("_")).map(w -> Character.toUpperCase(w.charAt(0)) + w.substring(1)).collect(java.util.stream.Collectors.joining("_"));
+						out.add(new Item(Kind.EVENT, "On_" + shown, "On_" + shown + ":", 0, recvExpr + ".On_" + shown + ":", ev.description, "event"));
+					}
+				}
+			}
 			if (sep == ':' && !base.isEmpty() && !reg.members.containsKey(base) && !reg.parents.containsKey(base)) {
 				return new Result(List.of(), ws);
 			}
