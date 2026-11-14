@@ -50,6 +50,21 @@ class LanguageTest {
 	}
 
 	@Test
+	void loopVariableBelongsToItsRound() {
+		Lab l = new Lab().run("""
+			fns = []
+			for i in range(1, 3):
+			    insert(fns, len(fns), lambda: i)
+			for f in fns:
+			    print(f())
+			print(i)
+			""");
+		assertEquals(List.of(), l.errors());
+		assertEquals(List.of("1", "2", "3"), l.prints().subList(0, 3));
+		assertEquals("3", l.prints().get(3)); // like Python, the variable is still there after the loop
+	}
+
+	@Test
 	void nestedLoopsBreakContinue() {
 		Lab l = new Lab().run("""
 			total = 0

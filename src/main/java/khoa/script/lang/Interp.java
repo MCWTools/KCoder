@@ -384,22 +384,32 @@ public final class Interp {
 		} else {
 			throw new KcdError("Cannot loop over " + Val.typeName(it), 0).withHint("use range(1, 10) or a list");
 		}
-		for (Object item : seq) {
-			tick(f);
-			if (f.targets().size() == 1) {
-				bindLocal(f.targets().get(0), item, sc);
-			} else {
-				bindLocal(new Node.TupleLit(f.targets(), f.line(), f.col()), item, sc);
+		Node target = f.targets().size() == 1 ? f.targets().get(0) : new Node.TupleLit(f.targets(), f.line(), f.col());
+		Object last = null;
+		boolean any = false;
+		try {
+			for (Object item : seq) {
+				tick(f);
+				// every round has its own scope, so the loop variable (and a "local" made in the body) belongs to that round:
+				// a handler or lambda created in the loop keeps the value of ITS round, not the last one
+				Scope round = new Scope(sc, "for");
+				bindLocal(target, item, round);
+				last = item;
+				any = true;
+				try {
+					execBlock(f.body(), round);
+				} catch (Signal s) {
+					if (s == BREAK) {
+						break;
+					}
+					if (s != CONTINUE) {
+						throw s;
+					}
+				}
 			}
-			try {
-				execBlock(f.body(), sc);
-			} catch (Signal s) {
-				if (s == BREAK) {
-					break;
-				}
-				if (s != CONTINUE) {
-					throw s;
-				}
+		} finally {
+			if (any) {
+				bindLocal(target, last, sc); // like Python: the loop variable is still there after the loop
 			}
 		}
 	}
