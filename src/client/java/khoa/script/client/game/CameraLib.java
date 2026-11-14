@@ -56,6 +56,17 @@ public final class CameraLib {
 	}
 
 	private static Val.Rotation toward(LocalPlayer p, Object target) {
+		return toward(p, target, false);
+	}
+
+	/** With nearest, an entity (or hitbox) target is aimed at the point of its REAL hitbox closest to where you aim now, not at its centre. */
+	private static Val.Rotation toward(LocalPlayer p, Object target, boolean nearest) {
+		if (nearest) {
+			Entity e = target instanceof HitboxRef h ? h.entity : target instanceof EntityRef r ? r.entity() : null;
+			if (e != null) {
+				return HitboxLib.nearestAim(p, HitboxLib.realBox(e));
+			}
+		}
 		return Convert.directionToRotation(aimPoint(target).sub(G.v(p.getEyePosition())));
 	}
 
@@ -110,9 +121,9 @@ public final class CameraLib {
 			return null;
 		}).client().perm("look").example("set_player_direction(yaw, pitch)");
 		R.alias("set_camera_rotation", "set_player_direction");
-		R.def(c, "look_at(target:vec3)", "Turns you at once to look at a point, entity (its centre) or block (its centre).", a -> {
+		R.def(c, "look_at(target:vec3, nearest?:boolean=false)", "Turns you at once to look at a point, entity (its centre) or block (its centre). With nearest=true an entity is aimed at the point of its real hitbox closest to your current aim instead of its centre.", a -> {
 			var p = G.me();
-			Val.Rotation r = toward(p, a.obj(0));
+			Val.Rotation r = toward(p, a.obj(0), a.bool(1, false));
 			apply(p, r.yaw(), r.pitch());
 			return null;
 		}).client().perm("look").example("look_at(allay)");
@@ -135,20 +146,21 @@ public final class CameraLib {
 				apply(p, p.getYRot() + dy * k, p.getXRot() + dp * k);
 				return dist - max;
 			}).client().perm("look").example("while rotate_towards(opponent, 8) > 0:\n    wait_tick(1)");
-		R.def(c, "look_at_smooth(target:any, steps?:number=100, min_ms?:number=1, max_ms?:number=3)",
-			"Smoothly turns you to the target in `steps` small moves, waiting a random min_ms..max_ms between them. Pass the entity itself (look_at_smooth(allay)) or a function that returns a position (lambda: allay.pos) and the target is read again every step, so a moving target is followed. A plain vec3 such as allay.pos is a fixed point read once. Only the script that calls it waits; other scripts and event handlers keep running.",
+		R.def(c, "look_at_smooth(target:any, steps?:number=100, min_ms?:number=1, max_ms?:number=3, nearest?:boolean=false)",
+			"Smoothly turns you to the target in `steps` small moves, waiting a random min_ms..max_ms between them. Pass the entity itself (look_at_smooth(allay)) or a function that returns a position (lambda: allay.pos) and the target is read again every step, so a moving target is followed. A plain vec3 such as allay.pos is a fixed point read once. With nearest=true an entity target is aimed at the closest point of its real hitbox (re-evaluated every step) instead of its centre. Only the script that calls it waits; other scripts and event handlers keep running.",
 			a -> {
 				Object target = a.obj(0);
 				int steps = Math.max(1, a.intv(1, 100));
 				double lo = a.num(2, 1);
 				double hi = Math.max(lo, a.num(3, 3));
+				boolean nearest = a.bool(4, false);
 				for (int n = 1; n <= steps; n++) {
 					final double fraction = 1.0 / (steps - n + 1);
 					// a function target is asked again every step, so it can follow something that moves
 					final Object aim = a.isFunction(0) ? a.call(0) : target;
 					a.in.onClient(() -> {
 						var p = G.me();
-						Val.Rotation r = toward(p, aim);
+						Val.Rotation r = toward(p, aim, nearest);
 						turn(p, r.yaw(), r.pitch(), fraction);
 						return null;
 					});
