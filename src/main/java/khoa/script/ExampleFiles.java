@@ -440,6 +440,99 @@ public final class ExampleFiles {
 			    notify("Pricelist", "{len(dump)} items read, {added} new price(s) saved")
 			""");
 
+		FILES.put("features/locator.kcd", """
+			# /locator <- finds a Java player in the overworld by triangulating the locator bar with KhoaTools, then teleports you to the nearest pw.
+			# Needs the KhoaTools mod (Locator Coord, Locator Finder, PW Nearest). NOT run by main.kcd: implement it or copy it into your folder.
+			# Flow: /pw cloudstown2 (it teleports after 3s) -> sample 1 at +2.5s (still at the old spot) -> sample 2 at +4s (new spot)
+			# -> read "Triangulated location" -> Locator Finder line + PW Nearest -> /pw <nearest>.
+
+			TELEPORT_PW = "cloudstown2"
+			SAMPLE_1_AT = 2.5
+			SAMPLE_2_AFTER = 1.5
+
+			cmd = register_command("/locator")
+
+			# Runs a KhoaTools command and returns the newest chat line it printed ("" when nothing came).
+			function khoa(text):
+			    run_client_command("khoatoolsclient " + text)
+			    lines = get_chat(6)
+			    i = len(lines) - 1
+			    while i >= 0:
+			        if lines[i].contains("Locator") or lines[i].contains("Triangulated") or lines[i].contains("PW g"):
+			            return lines[i]
+			        i = i - 1
+			    return ""
+
+			function bad_sample(line):
+			    return line == "" or line.contains("không hiện trên locator bar") or line.contains("không đọc được") or line.contains("Không thấy player")
+
+			function find_online(name):
+			    for p in get_online_players():
+			        if lower(p) == lower(name):
+			            return p
+			    return nil
+
+			function nearest_pw():
+			    lines = get_chat(12)
+			    start = -1
+			    i = 0
+			    while i < len(lines):
+			        if lines[i].contains("PW g") and lines[i].contains("nhất"):
+			            start = i
+			        i = i + 1
+			    if start < 0:
+			        return nil
+			    text = ""
+			    i = start
+			    while i < len(lines):
+			        text = text + lines[i] + " "
+			        i = i + 1
+			    found = regex_find(text, "/pw [A-Za-z0-9_]+")
+			    if len(found) == 0:
+			        return nil
+			    return substring(found[0], 4)
+
+			on_command_run("/locator"):
+			    typed = chat_prompt("Name ng chơi (java, overworld):", 60)
+			    if typed == nil or trim(typed) == "":
+			        chat("Locator: huỷ (không nhập tên).")
+			        return
+			    name = find_online(trim(typed))
+			    if name == nil:
+			        chat("Locator: không thấy player '" + trim(typed) + "' (phải đang online, tab list).")
+			        return
+
+			    khoa("locatorcoord " + name + " clear")
+			    send_command("pw " + TELEPORT_PW)
+			    wait(SAMPLE_1_AT)
+			    first = khoa("locatorcoord " + name)
+			    if bad_sample(first):
+			        chat("Locator: " + name + " đã tắt locator bar hoặc không ở overworld -> huỷ.")
+			        return
+			    wait(SAMPLE_2_AFTER)
+			    second = khoa("locatorcoord " + name)
+			    if bad_sample(second) or second.contains("dimension"):
+			        chat("Locator: " + name + " đã tắt locator bar hoặc không ở overworld -> huỷ.")
+			        return
+			    at = second.index_of("Triangulated")
+			    if at < 0:
+			        chat("Locator: chưa tính được vị trí: " + second)
+			        return
+			    nums = regex_find(substring(second, at), "-?[0-9]+")
+			    x = to_number(nums[0])
+			    z = to_number(nums[1])
+			    chat("Locator: " + name + " ở khoảng " + x + " " + z)
+
+			    khoa("locatorfinder " + name)
+			    khoa("pwnearest " + x + " 64 " + z)
+			    pw = nearest_pw()
+			    if pw == nil:
+			        chat("Locator: không tìm được pw gần nhất.")
+			        return
+			    chat("Locator: tp tới pw " + pw)
+			    send_command("pw " + pw)
+			""");
+
 		FILES.put("features/commands.kcd", """
 			# Script commands (NOT run by main.kcd; implement it or copy it into your folder).
 			# Type /greet or /greet world in chat. The command disappears when the script stops.

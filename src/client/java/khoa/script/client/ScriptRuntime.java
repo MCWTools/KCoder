@@ -95,6 +95,7 @@ public final class ScriptRuntime {
 		DataLib.register();
 		InfoLib.register();
 		khoa.script.client.game.ChatLib.register();
+		khoa.script.client.game.ChatPrompt.register();
 		khoa.script.client.game.MotionLib.register();
 		khoa.script.client.game.PacketLib.register();
 		khoa.script.client.game.CommandLib.register();

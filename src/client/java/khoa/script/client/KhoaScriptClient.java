@@ -27,6 +27,7 @@ public class KhoaScriptClient implements ClientModInitializer {
 		ScriptFolders.ensureExample();
 		ScriptRuntime.registerApi();
 		khoa.script.client.game.CommandLib.init();
+		khoa.script.client.game.ChatPrompt.init();
 		net.fabricmc.fabric.api.client.screen.v1.ScreenEvents.AFTER_INIT.register((mc, screen, w, h) -> khoa.script.client.ui.UiManager.installOverlay(screen));
 		net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry.addLast(net.minecraft.resources.Identifier.fromNamespaceAndPath("khoascript", "ui"), (g, dt) -> khoa.script.client.ui.UiManager.renderHud(g));
 		ClientTickEvents.END_CLIENT_TICK.register(mc -> {

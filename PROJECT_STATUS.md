@@ -61,3 +61,8 @@ Client-side Fabric mod: an in-game scripting platform with its own Python-like l
 - `get_nearest_angle_to_aim(entity|hitbox) -> rotation` (perm `look`): closest-in-angle point of the real box (12-edge search), nudged 0.02 inside; returns the current rotation if already aimed at it.
 - Verified with javap on 26.3 jars: Entity.getBoundingBox (public final, returns field bb), MultiPlayerGameMode.attack/interact descriptors, F3+B (EntityHitboxDebugRenderer) calls Entity.getBoundingBox. Risk to check first in game: EntityMixin + the two new injectors apply (defaultRequire=1).
 - Cannot resize your own hitbox (collision). Scale range 0..32.
+
+## 2026-11-14 (later): chat_prompt, run_client_command, features/locator.kcd (built + tests pass, NOT verified in game)
+- `chat_prompt(question, timeout=60) -> string|nil` (ChatPrompt, ClientSendMessageEvents.ALLOW_CHAT): prints the question and swallows the player's next chat line (never sent to the server). Cleaned up when the script stops.
+- `run_client_command(command) -> boolean`: executes a Fabric client command synchronously through ClientCommandInternals (feedback lands in chat/get_chat at once).
+- `features/locator.kcd`: /locator -> asks the name, /pw cloudstown2, locatorcoord at 2.5s and +1.5s, parses "Triangulated location", locatorfinder + pwnearest, /pw <nearest>. Needs KhoaTools.
