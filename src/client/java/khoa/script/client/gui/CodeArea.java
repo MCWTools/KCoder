@@ -548,7 +548,10 @@ public final class CodeArea {
 			shift = activeStart;
 		}
 		boolean hasDoc = !s.doc().isEmpty();
-		java.util.List<String> docLines = hasDoc ? Ui.wrap(s.doc(), boxW - 16, 8) : java.util.List.of();
+		// only the first sentence, at most 2 lines: the whole text is in the completion popup and the reference, and a tall box hides the code
+		int dot = s.doc().indexOf(". ");
+		String shortDoc = dot > 0 ? s.doc().substring(0, dot + 1) : s.doc();
+		java.util.List<String> docLines = hasDoc ? Ui.wrap(shortDoc, boxW - 16, 2) : java.util.List.of();
 		int boxH = Ui.LH + 8 + docLines.size() * (Ui.LH + 1);
 		int ax = textX() + xOf(s.row(), s.col()) - (int) scrollX;
 		int bx = Math.max(x + 4, Math.min(ax - 8, x + w - boxW - 4));
