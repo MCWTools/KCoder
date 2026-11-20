@@ -85,6 +85,11 @@ public final class Val {
 		Object dynamicMember(String name);
 	}
 
+	/** A Java object from another mod's API: any public method is callable by name (case and underscores ignored): obj:GetAimingEntity(). */
+	public interface KInvokable extends KObject {
+		Object invoke(String name, List<Object> args);
+	}
+
 	/** An object whose members can be assigned:  box.text = "hi". */
 	public interface KSettable extends KObject {
 		void setMember(String name, Object value);

@@ -69,7 +69,14 @@ public final class Session {
 		return Parser.parse(src, file);
 	}
 
+	/** Set by the client side to support {@code implement khoa.fakeplayer} (another mod's API). */
+	public static volatile ModApiHost modApi;
+
 	public Val.KModule loadModule(Interp in, String fromFile, String ref) {
+		ModApiHost host = modApi;
+		if (host != null && host.handles(ref)) {
+			return host.load(in, ref);
+		}
 		String base = fromFile.startsWith("<") ? baseDir : Paths.dir(fromFile);
 		String path = Paths.resolve(base, ref);
 		if (path == null) {

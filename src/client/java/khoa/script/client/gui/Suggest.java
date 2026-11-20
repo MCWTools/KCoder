@@ -236,6 +236,9 @@ public final class Suggest {
 		if (im.find()) {
 			int s = im.start(1);
 			String typed = line.substring(s, col);
+			if (net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("fakeplayer")) {
+				out.add(new Item(Kind.FILE, "khoa.fakeplayer", "khoa.fakeplayer", 0, "mod api", "FakePlayer mod: fakeplayer = implement khoa.fakeplayer, then fakeplayer:GetPlayer(\"Name\")", "file"));
+			}
 			for (String f : files.get()) {
 				String rel = relative(currentDir, f);
 				out.add(new Item(Kind.FILE, rel, rel, 0, "module", "Module file " + f, "file"));
@@ -283,6 +286,18 @@ public final class Suggest {
 			}
 			Map<String, String> vars = variables(lines, row);
 			String type = SuggestTypes.typeOf(recvExpr, vars);
+			if (type.equals(FakePlayerSuggest.MODULE)) {
+				for (FakePlayerSuggest.Entry en : FakePlayerSuggest.moduleFunctions()) {
+					out.add(new Item(Kind.METHOD, en.name(), en.name() + "()", en.signature().contains("name:") ? 1 : 0, en.signature(), en.doc(), recv));
+				}
+				return finish(out, prefix, ws, col, force);
+			}
+			if (SuggestTypes.baseOf(type).equals(FakePlayerSuggest.TYPE)) {
+				for (FakePlayerSuggest.Entry en : FakePlayerSuggest.botMembers()) {
+					out.add(new Item(Kind.METHOD, en.name(), en.name() + "()", en.signature().contains("()") ? 0 : 1, en.signature(), en.doc(), "fakeplayer"));
+				}
+				return finish(out, prefix, ws, col, force);
+			}
 			if (type.startsWith("module:")) {
 				String path = resolve(currentDir, type.substring(7));
 				String src = source.apply(path.endsWith(".kcd") ? path : path + ".kcd");

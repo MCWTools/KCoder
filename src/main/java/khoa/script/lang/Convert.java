@@ -8,6 +8,11 @@ public final class Convert {
 	}
 
 	/** Things that have a world position (entities, blocks ...). */
+	/** Has a box (entity hitbox, block cell): {minX, minY, minZ, maxX, maxY, maxZ}. */
+	public interface HasBox {
+		double[] box();
+	}
+
 	public interface HasPos {
 		Val.Vec3 pos();
 	}
@@ -24,6 +29,13 @@ public final class Convert {
 		}
 		if (o instanceof Val.Tuple t && t.items().size() == 3) {
 			return toVec3(t.items());
+		}
+		if (o instanceof java.util.Map<?, ?> m) {
+			// get_camera() and similar info maps: use their position
+			Object p = m.get("position") != null ? m.get("position") : m.get("pos");
+			if (p != null && !(p instanceof java.util.Map)) {
+				return toVec3(p);
+			}
 		}
 		return null;
 	}

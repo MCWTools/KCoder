@@ -337,8 +337,14 @@ public final class SuggestTypes {
 					j++;
 				}
 				String name = s.substring(i + 1, j);
-				Registry.Member m = type.isEmpty() ? null : Registry.get().member(baseOf(type), name);
-				type = m == null ? "" : clean(m.returns);
+				if (type.equals(FakePlayerSuggest.MODULE)) {
+					type = FakePlayerSuggest.moduleReturn(name);
+				} else if (baseOf(type).equals(FakePlayerSuggest.TYPE)) {
+					type = FakePlayerSuggest.botReturn(name);
+				} else {
+					Registry.Member m = type.isEmpty() ? null : Registry.get().member(baseOf(type), name);
+					type = m == null ? "" : clean(m.returns);
+				}
 				i = j;
 				if (i < s.length() && s.charAt(i) == '(') {
 					int e = closing(s, i);
@@ -469,6 +475,9 @@ public final class SuggestTypes {
 				Matcher imp = IMPLEMENT.matcher(rhs);
 				if (imp.find()) {
 					type = "module:" + (imp.group(1) != null ? imp.group(1) : imp.group(2));
+					if (type.equals("module:khoa.fakeplayer")) {
+						type = FakePlayerSuggest.MODULE;
+					}
 				} else if (names.length == 1) {
 					type = typeOf(rhs, vars);
 				}

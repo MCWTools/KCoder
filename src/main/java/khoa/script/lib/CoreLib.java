@@ -157,6 +157,13 @@ public final class CoreLib {
 		throw new KcdError("Cannot compare " + Val.typeName(a) + " with " + Val.typeName(b), 0);
 	}
 
+	private static double nearestDistance(Val.Vec3 p, double[] b) {
+		double dx = Math.max(Math.max(b[0] - p.x(), 0), p.x() - b[3]);
+		double dy = Math.max(Math.max(b[1] - p.y(), 0), p.y() - b[4]);
+		double dz = Math.max(Math.max(b[2] - p.z(), 0), p.z() - b[5]);
+		return Math.sqrt(dx * dx + dy * dy + dz * dz);
+	}
+
 	// ---------------------------------------------------------------- vectors
 	private static void vectors() {
 		String c = "vector";
@@ -164,8 +171,20 @@ public final class CoreLib {
 		R.def(c, "vec3(x:number, y:number, z:number) -> vec3", "A 3D vector (position or direction).", a -> new Val.Vec3(a.num(0), a.num(1), a.num(2)))
 			.example("vec3(0, 1.5, 0)");
 		R.def(c, "rotation(yaw:number, pitch:number) -> rotation", "A yaw/pitch pair in degrees. yaw, pitch = rotation(90, 0) unpacks it.", a -> new Val.Rotation(a.num(0), a.num(1)));
-		R.def(c, "distance(a:vec3, b:vec3) -> number", "Distance between two points (entities and blocks count as their position).", a -> a.vec3(0).sub(a.vec3(1)).length())
-			.example("dist = distance(eyepos, allay)");
+		R.def(c, "distance(a:vec3, b:vec3, nearest?:bool=false) -> number", "Distance between two points (entities and blocks count as their position). With nearest = true an entity or block is measured to the closest point of its box instead of its centre (this is what attack reach uses).", a -> {
+			if (a.bool(2, false)) {
+				Object x = a.obj(0);
+				Object y = a.obj(1);
+				if (y instanceof Convert.HasBox hb) {
+					return nearestDistance(a.vec3(0), hb.box());
+				}
+				if (x instanceof Convert.HasBox hb) {
+					return nearestDistance(a.vec3(1), hb.box());
+				}
+			}
+			return a.vec3(0).sub(a.vec3(1)).length();
+		})
+			.example("dist = distance(player:getcamerapos(), entity, true)");
 		R.def(c, "distance_squared(a:vec3, b:vec3) -> number", "Squared distance (faster, good for comparing).", a -> {
 			Val.Vec3 v = a.vec3(0).sub(a.vec3(1));
 			return v.dot(v);

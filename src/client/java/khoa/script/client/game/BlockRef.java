@@ -7,7 +7,12 @@ import khoa.script.lang.Convert;
 import khoa.script.lang.Val;
 
 /** A block position in the world; the state is read when asked. HasPos gives the block centre. */
-public record BlockRef(BlockPos blockPos) implements Val.KObject, Convert.HasPos {
+public record BlockRef(BlockPos blockPos) implements Val.KObject, Convert.HasPos, Convert.HasBox {
+	@Override
+	public double[] box() {
+		return new double[] {blockPos.getX(), blockPos.getY(), blockPos.getZ(), blockPos.getX() + 1, blockPos.getY() + 1, blockPos.getZ() + 1};
+	}
+
 	@Override
 	public String typeName() {
 		return "block";

@@ -7,7 +7,13 @@ import khoa.script.lang.Convert;
 import khoa.script.lang.Val;
 
 /** A script handle to an entity. Two refs to the same entity are equal. */
-public record EntityRef(Entity entity) implements Val.KObject, Convert.HasPos {
+public record EntityRef(Entity entity) implements Val.KObject, Convert.HasPos, Convert.HasBox {
+	@Override
+	public double[] box() {
+		var b = entity.getBoundingBox();
+		return new double[] {b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ};
+	}
+
 	@Override
 	public String typeName() {
 		return entity instanceof Player ? "player" : "entity";

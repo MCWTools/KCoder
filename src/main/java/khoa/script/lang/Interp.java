@@ -1002,6 +1002,9 @@ public final class Interp {
 		if (obj instanceof Map<?, ?> m && m.get(name) != null && isCallable(m.get(name))) {
 			return callValue(m.get(name), pos, named, name);
 		}
+		if (obj instanceof Val.KInvokable inv) {
+			return inv.invoke(name, pos);
+		}
 		String type = Val.typeName(obj);
 		Registry.Member mem = reg.member(type, name);
 		if (mem == null) {
@@ -1095,6 +1098,9 @@ public final class Interp {
 			if (found != null) {
 				return found;
 			}
+		}
+		if (obj instanceof Val.KInvokable) {
+			return new Val.Bound(obj, name);
 		}
 		Registry.Member mem = reg.member(Val.typeName(obj), name);
 		if (mem == null) {

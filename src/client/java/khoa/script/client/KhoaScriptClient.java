@@ -24,6 +24,7 @@ public class KhoaScriptClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		Kcd.init();
+		khoa.script.lang.Session.modApi = khoa.script.client.game.ModApiBridge.INSTANCE;
 		ScriptFolders.ensureExample();
 		ScriptRuntime.registerApi();
 		khoa.script.client.game.CommandLib.init();
